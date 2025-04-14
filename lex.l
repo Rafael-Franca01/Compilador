@@ -27,6 +27,8 @@ ID {LETRA}({LETRA}|{NUM})*
 
 "fl"        {return TK_TIPO_FLOAT;}
 
+"ch"        {return TK_TIPO_CHAR;}
+
 [(){}[\];,]	{ return *yytext; }
 
 [+\-*/]		{ return *yytext; }
@@ -36,6 +38,7 @@ ID {LETRA}({LETRA}|{NUM})*
 {NUM}		{ yylval.label = yytext; return TK_NUM; }
 {ID}		{ yylval.label = yytext; return TK_ID; }
 {REAL}      { yylval.label = yytext; return TK_REAL;}
+{CHAR}      { yylval.label = yytext; return TK_CHAR;}
 
 .			{ *yytext; }
 

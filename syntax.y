@@ -20,8 +20,8 @@ void yyerror(string);
 string gentempcode();
 %}
 
-%token TK_NUM TK_REAL
-%token TK_MAIN TK_ID TK_TIPO_INT TK_TIPO_FLOAT TK_FUNCTION
+%token TK_NUM TK_REAL TK_CHAR
+%token TK_MAIN TK_ID TK_TIPO_INT TK_TIPO_FLOAT TK_FUNCTION TK_TIPO_CHAR
 %token TK_FIM TK_ERROR
 
 %start S
@@ -112,6 +112,10 @@ E 			: E '+' E
 			{
 				$$.traducao = "\tfloat " + $2.label + ";\n";
 			}
+			| TK_TIPO_CHAR TK_ID
+			{
+				$$.traducao = "\tchar " + $2.label + ";\n";
+			}
 			| TK_NUM
 			{
 				$$.label = gentempcode();
@@ -124,7 +128,13 @@ E 			: E '+' E
 			}
 			| TK_REAL
 			{
-				$$.traducao = "\toi eu sou o real " + $$.label + ";\n";
+				$$.label = gentempcode();
+				$$.traducao = "\t" + $$.label + " = " + $1.label + ";\n";
+			}
+			| TK_CHAR
+			{
+				$$.label = gentempcode();
+				$$.traducao = "\t" + $$.label + " = " + $1.label + ";\n";
 			}
 			;
 
