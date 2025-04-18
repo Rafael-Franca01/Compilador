@@ -1,5 +1,8 @@
 %{
 #include <string>
+#include "y.tab.h"
+
+using namespace std;
 
 %}
 
@@ -7,39 +10,39 @@ ESPACO [ \t]
 DIGITO [0-9]
 LETRA [A-Za-z_]
 
-DELIM {ESPACO}+
-NUM {DIGITO}+
-REAL {NUM}+("."{NUM}+)?
-CHAR \'({LETRA}|{NUM})\'
-ID {LETRA}({LETRA}|{NUM})*
+DELIM       {ESPACO}+
+NUM         {DIGITO}+
+FLOAT       {DIGITO}+"."{DIGITO}+
+CHAR        \'([^\\]|\\[nrt0\\'"\\])\'
+ID          {LETRA}({LETRA}|{DIGITO})*
 
 %%
 
-"\n"		{}
+(\r\n|\n|\r)          { contador_linha++; }  
 
-{DELIM} 	{}
+{DELIM}		{}
 
-"main"		{return TK_MAIN;}
+"main"		{ return TK_MAIN; }
 
-"fn"        {return TK_FUNCTION;}
+"it"		{ return TK_TIPO_INT; }
+"ft"		{ return TK_TIPO_FLOAT; }
+"cha"      { return TK_TIPO_CHAR; }
+"boo"	{ return TK_TIPO_BOOL; }
 
-"it"		{return TK_TIPO_INT;}
+"true"		{ yylval.label = "1"; yylval.tipo = "boolean"; return TK_TRUE; }
+"false"		{ yylval.label = "0"; yylval.tipo = "boolean"; return TK_FALSE; }
 
-"fl"        {return TK_TIPO_FLOAT;}
-
-"ch"        {return TK_TIPO_CHAR;}
+"="			{ return '='; }
 
 [(){}[\];,]	{ return *yytext; }
 
 [+\-*/]		{ return *yytext; }
 
-"="		    { return '='; }
-
-{NUM}		{ yylval.label = yytext; return TK_NUM; }
+{FLOAT}		{ yylval.label = yytext; yylval.tipo = "float"; return TK_FLOAT; }
+{NUM}		{ yylval.label = yytext; yylval.tipo = "int"; return TK_NUM; }
 {ID}		{ yylval.label = yytext; return TK_ID; }
-{REAL}      { yylval.label = yytext; return TK_REAL;}
-{CHAR}      { yylval.label = yytext; return TK_CHAR;}
 
-.			{ *yytext; }
+
+.			{ return TK_ERROR; }
 
 %%
