@@ -1,8 +1,4 @@
-it main() {
-	it x;
-    x = (x + 2);
-    x = x * 3;
-
-    ft y;
-    y = y + 1.8;
+int main() {
+	boo receba;
+	receba = ~~receba;
 }
