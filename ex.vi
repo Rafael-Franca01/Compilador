@@ -1,6 +1,8 @@
-fn main()
-{
-	it A;
-	b = 3.0;
-	A = (1 + 2) * 3;
+it main() {
+	it x;
+    x = (x + 2);
+    x = x * 3;
+
+    ft y;
+    y = y + 1.8;
 }
