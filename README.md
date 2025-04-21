@@ -1,12 +1,4 @@
-
----
-
-## ✅ `TODO` do Projeto
-
-```markdown
-# TODO
-
-## 🧱 Etapa 1 - Expressões e Tipos
+# 🧱 Etapa 1 - Expressões e Tipos
 - [x] Implementar suporte aos tipos primitivos: int, float, boolean, char
 - [x] Implementar operadores aritméticos
 - [ ] Implementar operadores relacionais
@@ -15,7 +7,7 @@
 - [ ] Conversão implícita e explícita de tipos
 - [ ] Testes para expressões e atribuições
 
-## 🧱 Etapa 2 - Controle e Estrutura
+# 🧱 Etapa 2 - Controle e Estrutura
 - [ ] Implementar escopo global e blocos
 - [ ] Suporte a strings e concatenação
 - [ ] Comandos de entrada e saída
@@ -24,7 +16,7 @@
 - [ ] Comando `switch`
 - [ ] Controle de laços: `break`, `continue`
 
-## 🧱 Etapa Final - Funções e Extras
+# 🧱 Etapa Final - Funções e Extras
 - [ ] Suporte à declaração de funções
 - [ ] Matrizes e inicialização de matrizes
 - [ ] Operadores compostos (ex: `+=`, `-=`)
