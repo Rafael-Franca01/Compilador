@@ -1,4 +1,13 @@
 int main() {
-	boo receba;
-	receba = ~~receba;
+	int a;
+	a = 3;
+	flt b;
+	b = 2.5;
+	chr c;
+	c = 'A';
+	boo d;
+	d = false;
+	int e;
+	e = (1 + 2) * a;
+	b = b + 2.5;
 }

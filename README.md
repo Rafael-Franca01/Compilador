@@ -5,11 +5,10 @@ Este projeto tem como objetivo o desenvolvimento de uma **linguagem de programa�
 # 🧱 Etapa 1 - Expressões e Tipos
 - [x] Implementar suporte aos tipos primitivos: int, float, boolean, char
 - [x] Implementar operadores aritméticos
-- [ ] Implementar operadores relacionais
-- [ ] Implementar operadores lógicos
+- [x] Implementar operadores relacionais
+- [x] Implementar operadores lógicos
 - [x] Suporte à declaração e atribuição de variáveis
 - [ ] Conversão implícita e explícita de tipos
-- [ ] Testes para expressões e atribuições
 
 # 🧱 Etapa 2 - Controle e Estrutura
 - [ ] Implementar escopo global e blocos

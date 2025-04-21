@@ -43,7 +43,7 @@ ID          {LETRA}({LETRA}|{DIGITO})*
 [>=]        { return *yytext; }
 [==]        { return *yytext; }
 [!=]        { return *yytext; }            
-[&]        { return *yytext; }
+[&]         { return *yytext; }
 [|]         { return *yytext; }
 [~]         { return *yytext; }
 [?]         { return *yytext; }

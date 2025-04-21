@@ -2,6 +2,7 @@
 #include <iostream>
 #include <string>
 #include <map>
+#include <vector>
 
 #define YYSTYPE atributos
 
@@ -19,6 +20,7 @@ struct atributos
 };
 
 map<string, atributos> tabela_simbolos;
+vector<string> ordem_declaracoes;
 map<string, string> declaracoes_temp;
 
 int yylex(void);
@@ -45,13 +47,16 @@ S : TK_TIPO_INT TK_MAIN '(' ')' BLOCO
 						"#include<stdio.h>\n"
 						"int main(void) {\n";
 
-		for (auto &it : declaracoes_temp) {
-			if (it.second == "int") {
-				codigo += "\tint " + it.first + ";\n";
-			} else if (it.second == "float") {
-				codigo += "\tfloat " + it.first + ";\n";
-			} else if (it.second == "boolean") {
-			codigo += "\tint " + it.first + ";\n";
+		for (auto &nome : ordem_declaracoes) {
+			string tipo = declaracoes_temp[nome];
+			if (tipo == "int") {
+				codigo += "\tint " + nome + ";\n";
+			} else if (tipo == "float") {
+				codigo += "\tfloat " + nome + ";\n";
+			} else if (tipo == "char") {
+				codigo += "\tchar " + nome + ";\n";
+			} else if (tipo == "boolean") {
+				codigo += "\tint " + nome + ";\n";
 			}
 		}
 
@@ -82,7 +87,7 @@ DECLARACAO : TIPO TK_ID ';'
 			yyerror("Erro: variável já declarada: " + $2.label);
 
 		atributos simb;
-		simb.label = gentempcode(); // pega um nome como t1
+		simb.label = gentempcode();
 		simb.tipo = $1.tipo;
 
 		tabela_simbolos[$2.label] = simb;
@@ -99,7 +104,6 @@ TIPO : TK_TIPO_INT    { $$.tipo = "int"; }
 
 E : E '+' E
 	{
-
 		if ($1.tipo != $3.tipo)
 			yyerror("Erro: tipos incompatíveis em '+'");
 
@@ -302,7 +306,7 @@ E : E '+' E
 
 		atributos simb = tabela_simbolos[$1.label];
 		$$.label = simb.label;
-		$$.traducao = ""; // não gera nada, só usa a temp
+		$$.traducao = "";
 		$$.tipo = simb.tipo;
 	}
 
@@ -314,7 +318,9 @@ E : E '+' E
 
 string gentempcode()
 {
-	return "t" + to_string(++var_temp_qnt);
+	string nome = "t" + to_string(++var_temp_qnt);
+    ordem_declaracoes.push_back(nome);
+    return nome;
 }
 
 int yyparse();
