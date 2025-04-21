@@ -1,3 +1,7 @@
+# Linguagem e Compilador - Projeto da Faculdade
+
+Este projeto tem como objetivo o desenvolvimento de uma **linguagem de programação** e seu respectivo **compilador**, atendendo aos requisitos definidos pelas etapas da disciplina.
+
 # 🧱 Etapa 1 - Expressões e Tipos
 - [x] Implementar suporte aos tipos primitivos: int, float, boolean, char
 - [x] Implementar operadores aritméticos
