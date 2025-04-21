@@ -7,11 +7,11 @@
 # TODO
 
 ## 🧱 Etapa 1 - Expressões e Tipos
-- [ ] Implementar suporte aos tipos primitivos: int, float, boolean, char
-- [ ] Implementar operadores aritméticos
+- [x] Implementar suporte aos tipos primitivos: int, float, boolean, char
+- [x] Implementar operadores aritméticos
 - [ ] Implementar operadores relacionais
 - [ ] Implementar operadores lógicos
-- [ ] Suporte à declaração e atribuição de variáveis
+- [x] Suporte à declaração e atribuição de variáveis
 - [ ] Conversão implícita e explícita de tipos
 - [ ] Testes para expressões e atribuições
 
