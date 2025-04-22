@@ -1,13 +1,9 @@
 int main() {
 	int a;
-	a = 3;
 	flt b;
-	b = 2.5;
-	chr c;
-	c = 'A';
-	boo d;
-	d = false;
-	int e;
-	e = (1 + 2) * a;
-	b = b + 2.5;
+	int c;
+
+	a = (flt) 2.0;
+	b = 3;
+	c = a + b;
 }

@@ -26,8 +26,10 @@ map<string, string> declaracoes_temp;
 int yylex(void);
 void yyerror(string);
 string gentempcode();
+atributos converter_implicitamente(atributos op, string tipo_destino);
 %}
 
+%token TK_MENOR_IGUAL TK_MAIOR_IGUAL TK_IGUAL_IGUAL TK_DIFERENTE
 %token TK_NUM TK_FLOAT TK_TRUE TK_FALSE TK_CHAR
 %token TK_MAIN TK_ID TK_TIPO_INT TK_TIPO_FLOAT TK_TIPO_CHAR TK_TIPO_BOOL
 %token TK_FIM TK_ERROR
@@ -104,69 +106,99 @@ TIPO : TK_TIPO_INT    { $$.tipo = "int"; }
 
 E : E '+' E
 	{
-		if ($1.tipo != $3.tipo)
-			yyerror("Erro: tipos incompatíveis em '+'");
-
+		if ($1.tipo != $3.tipo) {
+			if (($1.tipo == "int" && $3.tipo == "float") || ($1.tipo == "float" && $3.tipo == "int")) {
+				$1 = converter_implicitamente($1, "float");
+				$3 = converter_implicitamente($3, "float");
+			} else {
+				yyerror("Erro: tipos incompatíveis em '+'");
+			}
+		}
 		$$.label = gentempcode();
-		declaracoes_temp[$$.label] = $1.tipo;
-		$$.traducao = $1.traducao + $3.traducao +
-			"\t" + $$.label + " = " + $1.label + " + " + $3.label + ";\n";
 		$$.tipo = $1.tipo;
+		declaracoes_temp[$$.label] = $$.tipo;
+		$$.traducao = $1.traducao + $3.traducao +
+					"\t" + $$.label + " = " + $1.label + " + " + $3.label + ";\n";
 	}
 	| E '-' E
 	{
-		if ($1.tipo != $3.tipo)
-			yyerror("Erro: tipos incompatíveis em '-'");
-
+		if ($1.tipo != $3.tipo) {
+			if (($1.tipo == "int" && $3.tipo == "float") || ($1.tipo == "float" && $3.tipo == "int")) {
+				$1 = converter_implicitamente($1, "float");
+				$3 = converter_implicitamente($3, "float");
+			} else {
+				yyerror("Erro: tipos incompatíveis em '-'");
+			}
+		}
 		$$.label = gentempcode();
-		declaracoes_temp[$$.label] = $1.tipo;
-		$$.traducao = $1.traducao + $3.traducao +
-			"\t" + $$.label + " = " + $1.label + " - " + $3.label + ";\n";
 		$$.tipo = $1.tipo;
+		declaracoes_temp[$$.label] = $$.tipo;
+		$$.traducao = $1.traducao + $3.traducao +
+					"\t" + $$.label + " = " + $1.label + " - " + $3.label + ";\n";
 	}
 	| E '*' E
 	{
-		if ($1.tipo != $3.tipo)
-			yyerror("Erro: tipos incompatíveis em '*'");
-
+		if ($1.tipo != $3.tipo) {
+			if (($1.tipo == "int" && $3.tipo == "float") || ($1.tipo == "float" && $3.tipo == "int")) {
+				$1 = converter_implicitamente($1, "float");
+				$3 = converter_implicitamente($3, "float");
+			} else {
+				yyerror("Erro: tipos incompatíveis em '*'");
+			}
+		}
 		$$.label = gentempcode();
-		declaracoes_temp[$$.label] = $1.tipo;
-		$$.traducao = $1.traducao + $3.traducao +
-			"\t" + $$.label + " = " + $1.label + " * " + $3.label + ";\n";
 		$$.tipo = $1.tipo;
+		declaracoes_temp[$$.label] = $$.tipo;
+		$$.traducao = $1.traducao + $3.traducao +
+					"\t" + $$.label + " = " + $1.label + " * " + $3.label + ";\n";
 	}
 	| E '/' E
 	{
-		if ($1.tipo != $3.tipo)
-			yyerror("Erro: tipos incompatíveis em '/'");
-
+		if ($1.tipo != $3.tipo) {
+			if (($1.tipo == "int" && $3.tipo == "float") || ($1.tipo == "float" && $3.tipo == "int")) {
+				$1 = converter_implicitamente($1, "float");
+				$3 = converter_implicitamente($3, "float");
+			} else {
+				yyerror("Erro: tipos incompatíveis em '/'");
+			}
+		}
 		$$.label = gentempcode();
-		declaracoes_temp[$$.label] = $1.tipo;
-		$$.traducao = $1.traducao + $3.traducao +
-			"\t" + $$.label + " = " + $1.label + " / " + $3.label + ";\n";
 		$$.tipo = $1.tipo;
+		declaracoes_temp[$$.label] = $$.tipo;
+		$$.traducao = $1.traducao + $3.traducao +
+					"\t" + $$.label + " = " + $1.label + " / " + $3.label + ";\n";
 	}
 	| E '<' E
 	{
-		if ($1.tipo != $3.tipo)
-			yyerror("Erro: tipos incompatíveis em '<'");
-
+		if ($1.tipo != $3.tipo) {
+			if (($1.tipo == "int" && $3.tipo == "float") || ($1.tipo == "float" && $3.tipo == "int")) {
+				$1 = converter_implicitamente($1, "float");
+				$3 = converter_implicitamente($3, "float");
+			} else {
+				yyerror("Erro: tipos incompatíveis em '<'");
+			}
+		}
 		$$.label = gentempcode();
-		declaracoes_temp[$$.label] = $1.tipo;
+		$$.tipo = "bool";
+		declaracoes_temp[$$.label] = "int";
 		$$.traducao = $1.traducao + $3.traducao +
-			"\t" + $$.label + " = " + $1.label + " < " + $3.label + ";\n";
-		$$.tipo = "boolean";
+					"\t" + $$.label + " = " + $1.label + " < " + $3.label + ";\n";
 	}
 	| E '>' E
 	{
-		if ($1.tipo != $3.tipo)
-			yyerror("Erro: tipos incompatíveis em '>'");
-
+		if ($1.tipo != $3.tipo) {
+			if (($1.tipo == "int" && $3.tipo == "float") || ($1.tipo == "float" && $3.tipo == "int")) {
+				$1 = converter_implicitamente($1, "float");
+				$3 = converter_implicitamente($3, "float");
+			} else {
+				yyerror("Erro: tipos incompatíveis em '>'");
+			}
+		}
 		$$.label = gentempcode();
-		declaracoes_temp[$$.label] = $1.tipo;
+		$$.tipo = "bool";
+		declaracoes_temp[$$.label] = "int";
 		$$.traducao = $1.traducao + $3.traducao +
-			"\t" + $$.label + " = " + $1.label + " > " + $3.label + ";\n";
-		$$.tipo = "boolean";
+					"\t" + $$.label + " = " + $1.label + " > " + $3.label + ";\n";
 	}
 	| E '&' E
 	{
@@ -198,49 +230,69 @@ E : E '+' E
 			"\t" + $$.label + " = !" + $2.label + ";\n";
 		$$.tipo = "boolean";	
 	}
-	| E '>''=' E
+	| E TK_MAIOR_IGUAL E
 	{
-		if ($1.tipo != $3.tipo)
-			yyerror("Erro: tipos incompatíveis em '>='");
-
+		if ($1.tipo != $3.tipo) {
+			if (($1.tipo == "int" && $3.tipo == "float") || ($1.tipo == "float" && $3.tipo == "int")) {
+				$1 = converter_implicitamente($1, "float");
+				$3 = converter_implicitamente($3, "float");
+			} else {
+				yyerror("Erro: tipos incompatíveis em '>='");
+			}
+		}
 		$$.label = gentempcode();
-		declaracoes_temp[$$.label] = $1.tipo;
+		$$.tipo = "bool";
+		declaracoes_temp[$$.label] = "int";
 		$$.traducao = $1.traducao + $3.traducao +
-			"\t" + $$.label + " = " + $1.label + " >= " + $3.label + ";\n";
-		$$.tipo = "boolean";
+					"\t" + $$.label + " = " + $1.label + " >= " + $3.label + ";\n";
 	}
-	| E '<''=' E
+	| E TK_MENOR_IGUAL E
 	{
-		if ($1.tipo != $3.tipo)
-			yyerror("Erro: tipos incompatíveis em '<='");
-
+		if ($1.tipo != $3.tipo) {
+			if (($1.tipo == "int" && $3.tipo == "float") || ($1.tipo == "float" && $3.tipo == "int")) {
+				$1 = converter_implicitamente($1, "float");
+				$3 = converter_implicitamente($3, "float");
+			} else {
+				yyerror("Erro: tipos incompatíveis em '<='");
+			}
+		}
 		$$.label = gentempcode();
-		declaracoes_temp[$$.label] = $1.tipo;
+		$$.tipo = "bool";
+		declaracoes_temp[$$.label] = "int";
 		$$.traducao = $1.traducao + $3.traducao +
-			"\t" + $$.label + " = " + $1.label + " <= " + $3.label + ";\n";
-		$$.tipo = "boolean";
+					"\t" + $$.label + " = " + $1.label + " <= " + $3.label + ";\n";
 	}
-	| E '!''=' E
+	| E TK_DIFERENTE E
 	{
-		if ($1.tipo != $3.tipo)
-			yyerror("Erro: tipos incompatíveis em '!='");
-
+		if ($1.tipo != $3.tipo) {
+			if (($1.tipo == "int" && $3.tipo == "float") || ($1.tipo == "float" && $3.tipo == "int")) {
+				$1 = converter_implicitamente($1, "float");
+				$3 = converter_implicitamente($3, "float");
+			} else {
+				yyerror("Erro: tipos incompatíveis em '!='");
+			}
+		}
 		$$.label = gentempcode();
-		declaracoes_temp[$$.label] = $1.tipo;
+		$$.tipo = "bool";
+		declaracoes_temp[$$.label] = "int";
 		$$.traducao = $1.traducao + $3.traducao +
-			"\t" + $$.label + " = " + $1.label + " != " + $3.label + ";\n";
-		$$.tipo = "boolean";
+					"\t" + $$.label + " = " + $1.label + " != " + $3.label + ";\n";
 	}
-	| E '=''=' E
+	| E TK_IGUAL_IGUAL E
 	{
-		if ($1.tipo != $3.tipo)
-			yyerror("Erro: tipos incompatíveis em '=='");
-
+		if ($1.tipo != $3.tipo) {
+			if (($1.tipo == "int" && $3.tipo == "float") || ($1.tipo == "float" && $3.tipo == "int")) {
+				$1 = converter_implicitamente($1, "float");
+				$3 = converter_implicitamente($3, "float");
+			} else {
+				yyerror("Erro: tipos incompatíveis em '=='");
+			}
+		}
 		$$.label = gentempcode();
-		declaracoes_temp[$$.label] = $1.tipo;
+		$$.tipo = "bool";
+		declaracoes_temp[$$.label] = "int";
 		$$.traducao = $1.traducao + $3.traducao +
-			"\t" + $$.label + " = " + $1.label + " == " + $3.label + ";\n";
-		$$.tipo = "boolean";
+					"\t" + $$.label + " = " + $1.label + " == " + $3.label + ";\n";
 	}
 	| '(' E ')'
 	{
@@ -252,20 +304,30 @@ E : E '+' E
 			yyerror("Erro: variável não declarada: " + $1.label);
 
 		atributos simb = tabela_simbolos[$1.label];
-		if(simb.tipo == "boolean" && $3.tipo == "int"){
-			$$.traducao = $3.traducao + "\t" + simb.label + " = " + $3.label + ";\n";
-			$$.label = simb.label;
-			$$.tipo = simb.tipo;
-		}else{
-			if (simb.tipo != $3.tipo)
-			yyerror("Erro: tipos incompatíveis na atribuição");
 
+		if (simb.tipo == "boolean" && $3.tipo == "int") {
 			$$.traducao = $3.traducao + "\t" + simb.label + " = " + $3.label + ";\n";
 			$$.label = simb.label;
 			$$.tipo = simb.tipo;
 		}
-	}
+		
+		else if ((simb.tipo == "int" && $3.tipo == "float") || (simb.tipo == "float" && $3.tipo == "int")) {
+			atributos convertido = converter_implicitamente($3, simb.tipo);
+			$$.traducao = convertido.traducao + "\t" + simb.label + " = " + convertido.label + ";\n";
+			$$.label = simb.label;
+			$$.tipo = simb.tipo;
+		}
 
+		else if (simb.tipo == $3.tipo) {
+			$$.traducao = $3.traducao + "\t" + simb.label + " = " + $3.label + ";\n";
+			$$.label = simb.label;
+			$$.tipo = simb.tipo;
+		}
+		
+		else {
+			yyerror("Erro: tipos incompatíveis na atribuição");
+		}
+	}
 	| TK_NUM
 	{
 		$$.label = gentempcode();
@@ -291,12 +353,14 @@ E : E '+' E
 	{
 		$$.label = gentempcode();
 		$$.traducao = "\t" + $$.label + " = " + $1.label + ";\n";
+		$$.tipo = "boolean";
 		declaracoes_temp[$$.label] = $$.tipo;
 	} 
 	| TK_FALSE
 	{
 		$$.label = gentempcode();
 		$$.traducao = "\t" + $$.label + " = " + $1.label + ";\n";
+		$$.tipo = "boolean";
 		declaracoes_temp[$$.label] = $$.tipo;
 	}
 	| TK_ID
@@ -309,7 +373,32 @@ E : E '+' E
 		$$.traducao = "";
 		$$.tipo = simb.tipo;
 	}
+	| '(' TIPO ')' E
+	{
+		string de = $4.tipo;
+		string para = $2.tipo;
 
+		bool permitido = false;
+
+		if (de == "int") {
+			permitido = (para == "float");
+		} else if (de == "float") {
+			permitido = (para == "int");
+		}
+
+		if (!permitido && de != para) {
+			yyerror("Conversão entre tipos incompatíveis");
+		}
+
+		if (de == para) {
+			$$ = $4;
+		} else {
+			$$.label = gentempcode();
+			$$.tipo = para;
+			declaracoes_temp[$$.label] = para;
+			$$.traducao = $4.traducao + "\t" + $$.label + " = (" + para + ") " + $4.label + ";\n";
+		}
+	}
 	;
 
 %%
@@ -337,5 +426,21 @@ int main(int argc, char* argv[])
 void yyerror(string MSG)
 {
 	cout << "Erro na linha " << contador_linha << ": " << MSG << endl;
+	exit(1);
+}
+
+atributos converter_implicitamente(atributos op, string tipo_destino) {
+	if (op.tipo == tipo_destino) return op;
+
+	if ((op.tipo == "int" && tipo_destino == "float") || (op.tipo == "float" && tipo_destino == "int")) {
+		atributos convertido;
+		convertido.label = gentempcode();
+		convertido.tipo = tipo_destino;
+		convertido.traducao = op.traducao + "\t" + convertido.label + " = (" + tipo_destino + ") " + op.label + ";\n";
+		declaracoes_temp[convertido.label] = tipo_destino;
+		return convertido;
+	}
+
+	yyerror(("Conversão implícita inválida entre tipos '" + op.tipo + "' e '" + tipo_destino + "'").c_str());
 	exit(1);
 }

@@ -38,16 +38,16 @@ ID          {LETRA}({LETRA}|{DIGITO})*
 [(){}[\];,]	{ return *yytext; }
 
 [<]         { return *yytext; }
-[>]         { return *yytext; }
-[<=]        { return *yytext; }
-[>=]        { return *yytext; }
-[==]        { return *yytext; }
-[!=]        { return *yytext; }            
+[>]         { return *yytext; }           
 [&]         { return *yytext; }
 [|]         { return *yytext; }
 [~]         { return *yytext; }
 [?]         { return *yytext; }
 [+\-*/]		{ return *yytext; }
+"<="        { return TK_MENOR_IGUAL; }
+">="        { return TK_MAIOR_IGUAL; }
+"=="        { return TK_IGUAL_IGUAL; }
+"!="        { return TK_DIFERENTE; } 
 
 {CHAR}      { yylval.label = yytext; yylval.tipo = "char"; return TK_CHAR; }
 {FLOAT}		{ yylval.label = yytext; yylval.tipo = "float"; return TK_FLOAT; }
