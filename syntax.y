@@ -375,28 +375,24 @@ E : E '+' E
 	}
 	| '(' TIPO ')' E
 	{
-		string de = $4.tipo;
-		string para = $2.tipo;
+		string origem = $4.tipo;
+		string destino = $2.tipo;
 
-		bool permitido = false;
+		bool conversaoPermitida = 
+			(origem == "int" && destino == "float") ||
+			(origem == "float" && destino == "int");
 
-		if (de == "int") {
-			permitido = (para == "float");
-		} else if (de == "float") {
-			permitido = (para == "int");
-		}
-
-		if (!permitido && de != para) {
+		if (!conversaoPermitida && origem != destino) {
 			yyerror("Conversão entre tipos incompatíveis");
 		}
 
-		if (de == para) {
+		if (origem == destino) {
 			$$ = $4;
 		} else {
 			$$.label = gentempcode();
-			$$.tipo = para;
-			declaracoes_temp[$$.label] = para;
-			$$.traducao = $4.traducao + "\t" + $$.label + " = (" + para + ") " + $4.label + ";\n";
+			$$.tipo = destino;
+			declaracoes_temp[$$.label] = destino;
+			$$.traducao = $4.traducao + "\t" + $$.label + " = (" + destino + ") " + $4.label + ";\n";
 		}
 	}
 	;

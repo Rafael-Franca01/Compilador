@@ -8,7 +8,7 @@ Este projeto tem como objetivo o desenvolvimento de uma **linguagem de programa�
 - [x] Implementar operadores relacionais
 - [x] Implementar operadores lógicos
 - [x] Suporte à declaração e atribuição de variáveis
-- [ ] Conversão implícita e explícita de tipos
+- [x] Conversão implícita e explícita de tipos
 
 # 🧱 Etapa 2 - Controle e Estrutura
 - [ ] Implementar escopo global e blocos
