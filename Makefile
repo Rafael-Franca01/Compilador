@@ -19,7 +19,7 @@ debug:	PARSER_PARAMS += -Wcounterexamples
 debug: 	all
 
 translate: glf
-		./glf < ex.vi
+		./glf < ex.pcd
 
 clean:
 	rm y.tab.c
