@@ -1,7 +1,6 @@
 int main() {
-	int a;
-	flt b;
-	a = 2;
-	a = a + 1;
-	b = a + 1;
+	flt F;
+	int I;
+	
+	I = (int) F;
 }

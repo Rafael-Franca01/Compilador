@@ -179,7 +179,7 @@ E : E '+' E
 			}
 		}
 		$$.label = gentempcode();
-		$$.tipo = "bool";
+		$$.tipo = "boolean";
 		declaracoes_temp[$$.label] = "int";
 		$$.traducao = $1.traducao + $3.traducao +
 					"\t" + $$.label + " = " + $1.label + " < " + $3.label + ";\n";
@@ -195,7 +195,7 @@ E : E '+' E
 			}
 		}
 		$$.label = gentempcode();
-		$$.tipo = "bool";
+		$$.tipo = "boolean";
 		declaracoes_temp[$$.label] = "int";
 		$$.traducao = $1.traducao + $3.traducao +
 					"\t" + $$.label + " = " + $1.label + " > " + $3.label + ";\n";
@@ -241,7 +241,7 @@ E : E '+' E
 			}
 		}
 		$$.label = gentempcode();
-		$$.tipo = "bool";
+		$$.tipo = "boolean";
 		declaracoes_temp[$$.label] = "int";
 		$$.traducao = $1.traducao + $3.traducao +
 					"\t" + $$.label + " = " + $1.label + " >= " + $3.label + ";\n";
@@ -257,7 +257,7 @@ E : E '+' E
 			}
 		}
 		$$.label = gentempcode();
-		$$.tipo = "bool";
+		$$.tipo = "boolean";
 		declaracoes_temp[$$.label] = "int";
 		$$.traducao = $1.traducao + $3.traducao +
 					"\t" + $$.label + " = " + $1.label + " <= " + $3.label + ";\n";
@@ -273,7 +273,7 @@ E : E '+' E
 			}
 		}
 		$$.label = gentempcode();
-		$$.tipo = "bool";
+		$$.tipo = "boolean";
 		declaracoes_temp[$$.label] = "int";
 		$$.traducao = $1.traducao + $3.traducao +
 					"\t" + $$.label + " = " + $1.label + " != " + $3.label + ";\n";
@@ -289,7 +289,7 @@ E : E '+' E
 			}
 		}
 		$$.label = gentempcode();
-		$$.tipo = "bool";
+		$$.tipo = "boolean";
 		declaracoes_temp[$$.label] = "int";
 		$$.traducao = $1.traducao + $3.traducao +
 					"\t" + $$.label + " = " + $1.label + " == " + $3.label + ";\n";
