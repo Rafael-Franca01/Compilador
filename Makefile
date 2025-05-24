@@ -3,7 +3,7 @@ SCANNER_PARAMS := lex.l
 PARSER := yacc
 PARSER_PARAMS := -d syntax.y
 
-all: compile translate
+all: compile translate clean
 
 compile:
 		$(SCANNER) $(SCANNER_PARAMS)

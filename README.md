@@ -11,7 +11,7 @@ Este projeto tem como objetivo o desenvolvimento de uma **linguagem de programa�
 - [x] Conversão implícita e explícita de tipos
 
 # 🧱 Etapa 2 - Controle e Estrutura
-- [ ] Implementar escopo global e blocos
+- [x] Implementar escopo global e blocos
 - [ ] Suporte a strings e concatenação
 - [ ] Comandos de entrada e saída
 - [ ] Comando `if`, `if/else`

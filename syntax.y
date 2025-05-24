@@ -23,7 +23,15 @@ struct atributos
 vector<map<string, atributos>> pilha_tabelas_simbolos;
 vector<string> ordem_declaracoes;
 map<string, string> declaracoes_temp;
+map<string, string> mapa_c_para_original;
 
+static const map<string, string> mapa_tipos_linguagem_para_c = {
+		{"int", "int"},
+		{"float", "float"},
+		{"char", "char"},
+		{"boolean", "int"}
+};
+ 
 int yylex(void);
 void yyerror(string);
 string gentempcode();
@@ -86,7 +94,103 @@ void sair_escopo() {
 		cerr << "Erro crítico: Tentativa de sair de escopo com pilha vazia!" << endl;
 	}
 }
+
+string gerar_codigo_declaracoes(
+	const vector<string>& p_ordem_declaracoes, 
+	const map<string, string>& p_declaracoes_temp, 
+	const map<string, string>& p_mapa_c_para_original
+	) {
+    string codigo_local;
+    for (const auto &c_name : p_ordem_declaracoes) {
+        auto it_decl_type = p_declaracoes_temp.find(c_name);
+        if (it_decl_type != p_declaracoes_temp.end()) {
+            const string& tipo_linguagem = it_decl_type->second;
+
+            string tipo_c_str = tipo_linguagem; // Valor padrão
+            auto it_mapa_tipos = mapa_tipos_linguagem_para_c.find(tipo_linguagem);
+            if (it_mapa_tipos != mapa_tipos_linguagem_para_c.end()) {
+                tipo_c_str = it_mapa_tipos->second;
+            }
+
+            codigo_local += "\t" + tipo_c_str + " " + c_name + ";";
+
+            auto it_orig_name = p_mapa_c_para_original.find(c_name);
+            if (it_orig_name != p_mapa_c_para_original.end()) {
+                codigo_local += " // " + it_orig_name->second; // Adiciona o comentário
+            }
+            codigo_local += "\n";
+        }
+    }
+    return codigo_local;
+}
+
+atributos criar_expressao_binaria(atributos op1, string op_str_lexical, string op_str_c, atributos op2) {
+    atributos res;
+    string tipo_final_operacao = "error"; // se der merda ele nao foi mudado
+
+		// define os tipos na função e virifica quais são
+    bool eh_comparacao = (op_str_c == "<" || op_str_c == ">" || op_str_c == "<=" || op_str_c == ">=" || op_str_c == "==" || op_str_c == "!=");
+    bool eh_logico_e_ou = (op_str_lexical == "&" || op_str_lexical == "|"); 
+
+    // se ele ~NAO~ for logico entra aqui e faz conversão implicita se necessaria
+    if (!eh_logico_e_ou) {
+        if (op1.tipo != op2.tipo) {
+            if ((op1.tipo == "int" && op2.tipo == "float") || (op1.tipo == "float" && op2.tipo == "int")) {
+                op1 = converter_implicitamente(op1, "float"); 
+                op2 = converter_implicitamente(op2, "float");
+                tipo_final_operacao = "float";
+            } else {
+                yyerror("Erro: tipos incompatíveis '" + op1.tipo + "' e '" + op2.tipo + "' para operador '" + op_str_lexical + "'");
+                res.tipo = "error";
+                return res;
+            }
+        } else { //se os tipos forem iguais define o tipo da operação
+            tipo_final_operacao = op1.tipo; 
+        }
+    }
+
+    // se for operador logico entra aqui
+    if (eh_logico_e_ou) {
+        if (op1.tipo != "boolean" || op2.tipo != "boolean") {
+            yyerror("Erro: operandos para '" + op_str_lexical + "' devem ser booleanos.");
+            res.tipo = "error";
+            return res;
+        }
+        tipo_final_operacao = "boolean";
+    }
+
+    
+    if (eh_comparacao || eh_logico_e_ou) {
+        res.tipo = "boolean";
+    } else { 
+        res.tipo = tipo_final_operacao;
+    }
+
+    // gera o codigo da operação
+    res.label = gentempcode();
+    declaracoes_temp[res.label] = res.tipo; 
+    res.traducao = op1.traducao + op2.traducao +
+                   "\t" + res.label + " = " + op1.label + " " + op_str_c + " " + op2.label + ";\n";
+    return res;
+}
+
+atributos criar_expressao_unaria_not(atributos op) {
+    atributos res;
+    if (op.tipo != "boolean") {
+        yyerror("Erro: operando de '~' (NOT logico) deve ser booleano");
+        res.tipo = "error";
+        return res;
+    }
+    res.label = gentempcode();
+    res.tipo = "boolean";
+    declaracoes_temp[res.label] = res.tipo;
+    res.traducao = op.traducao + "\t" + res.label + " = !" + op.label + ";\n";
+    return res;
+}
+
 %}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 %token TK_MENOR_IGUAL TK_MAIOR_IGUAL TK_IGUAL_IGUAL TK_DIFERENTE
 %token TK_NUM TK_FLOAT TK_TRUE TK_FALSE TK_CHAR
@@ -114,20 +218,7 @@ S : TK_TIPO_INT TK_MAIN '(' ')' BLOCO
 		codigo +=			"int main(void) {\n";
 
 
-		for (const auto &nome : ordem_declaracoes) {
-			if (declaracoes_temp.count(nome)) {
-				string tipo = declaracoes_temp[nome];
-				if (tipo == "int") {
-					codigo += "\tint " + nome + ";\n";
-				} else if (tipo == "float") {
-					codigo += "\tfloat " + nome + ";\n";
-				} else if (tipo == "char") {
-					codigo += "\tchar " + nome + ";\n";
-				} else if (tipo == "boolean") {
-					codigo += "\tint " + nome + ";\n";
-				}
-			}
-		}
+		codigo += gerar_codigo_declaracoes(ordem_declaracoes, declaracoes_temp, mapa_c_para_original);
 
 		codigo += "\n";
 		codigo += $5.traducao;
@@ -141,20 +232,7 @@ S : TK_TIPO_INT TK_MAIN '(' ')' BLOCO
 	| BLOCO
 	{
 		string codigo;
-		for (const auto &nome : ordem_declaracoes) {
-			if (declaracoes_temp.count(nome)) {
-				string tipo = declaracoes_temp[nome];
-				if (tipo == "int") {
-					codigo += "\tint " + nome + ";\n";
-				} else if (tipo == "float") {
-					codigo += "\tfloat " + nome + ";\n";
-				} else if (tipo == "char") {
-					codigo += "\tchar " + nome + ";\n";
-				} else if (tipo == "boolean") {
-					codigo += "\tint " + nome + ";\n";
-				}
-			}
-		}
+		codigo = gerar_codigo_declaracoes(ordem_declaracoes, declaracoes_temp, mapa_c_para_original);
 
 		codigo += "\n";
 		codigo += $1.traducao;
@@ -194,6 +272,7 @@ DECLARACAO : TIPO TK_ID ';'
 
 		if (declarar_simbolo(original_name, $1.tipo, c_code_name)) {
 			declaracoes_temp[c_code_name] = $1.tipo;
+			mapa_c_para_original[c_code_name] = original_name;
 		}
 	}
 	;
@@ -205,195 +284,31 @@ TIPO : TK_TIPO_INT { $$.tipo = "int"; }
 	;
 
 E : E '+' E
-	{
-		if ($1.tipo != $3.tipo) {
-			if (($1.tipo == "int" && $3.tipo == "float") || ($1.tipo == "float" && $3.tipo == "int")) {
-				$1 = converter_implicitamente($1, "float");
-				$3 = converter_implicitamente($3, "float");
-			} else {
-				yyerror("Erro: tipos incompatíveis em '+'");
-			}
-		}
-		$$.label = gentempcode();
-		$$.tipo = $1.tipo;
-		declaracoes_temp[$$.label] = $$.tipo;
-		$$.traducao = $1.traducao + $3.traducao +
-					"\t" + $$.label + " = " + $1.label + " + " + $3.label + ";\n";
-	}
+	{ $$ = criar_expressao_binaria($1, "+", "+", $3); }
 	| E '-' E
-	{
-		if ($1.tipo != $3.tipo) {
-			if (($1.tipo == "int" && $3.tipo == "float") || ($1.tipo == "float" && $3.tipo == "int")) {
-				$1 = converter_implicitamente($1, "float");
-				$3 = converter_implicitamente($3, "float");
-			} else {
-				yyerror("Erro: tipos incompatíveis em '-'");
-			}
-		}
-		$$.label = gentempcode();
-		$$.tipo = $1.tipo;
-		declaracoes_temp[$$.label] = $$.tipo;
-		$$.traducao = $1.traducao + $3.traducao +
-					"\t" + $$.label + " = " + $1.label + " - " + $3.label + ";\n";
-	}
+	{ $$ = criar_expressao_binaria($1, "-", "-", $3); }
 	| E '*' E
-	{
-		if ($1.tipo != $3.tipo) {
-			if (($1.tipo == "int" && $3.tipo == "float") || ($1.tipo == "float" && $3.tipo == "int")) {
-				$1 = converter_implicitamente($1, "float");
-				$3 = converter_implicitamente($3, "float");
-			} else {
-				yyerror("Erro: tipos incompatíveis em '*'");
-			}
-		}
-		$$.label = gentempcode();
-		$$.tipo = $1.tipo;
-		declaracoes_temp[$$.label] = $$.tipo;
-		$$.traducao = $1.traducao + $3.traducao +
-					"\t" + $$.label + " = " + $1.label + " * " + $3.label + ";\n";
-	}
+	{ $$ = criar_expressao_binaria($1, "*", "*", $3); }
 	| E '/' E
-	{
-		if ($1.tipo != $3.tipo) {
-			if (($1.tipo == "int" && $3.tipo == "float") || ($1.tipo == "float" && $3.tipo == "int")) {
-				$1 = converter_implicitamente($1, "float");
-				$3 = converter_implicitamente($3, "float");
-			} else {
-				yyerror("Erro: tipos incompatíveis em '/'");
-			}
-		}
-		$$.label = gentempcode();
-		$$.tipo = $1.tipo;
-		declaracoes_temp[$$.label] = $$.tipo;
-		$$.traducao = $1.traducao + $3.traducao +
-					"\t" + $$.label + " = " + $1.label + " / " + $3.label + ";\n";
-	}
+	{ $$ = criar_expressao_binaria($1, "/", "/", $3); }
 	| E '<' E
-	{
-		if ($1.tipo != $3.tipo) {
-			if (($1.tipo == "int" && $3.tipo == "float") || ($1.tipo == "float" && $3.tipo == "int")) {
-				$1 = converter_implicitamente($1, "float");
-				$3 = converter_implicitamente($3, "float");
-			} else {
-				yyerror("Erro: tipos incompatíveis em '<'");
-			}
-		}
-		$$.label = gentempcode();
-		$$.tipo = "boolean";
-		declaracoes_temp[$$.label] = "boolean";
-		$$.traducao = $1.traducao + $3.traducao +
-					"\t" + $$.label + " = " + $1.label + " < " + $3.label + ";\n";
-	}
+	{ $$ = criar_expressao_binaria($1, "<", "<", $3); }
 	| E '>' E
-	{
-		if ($1.tipo != $3.tipo) {
-			if (($1.tipo == "int" && $3.tipo == "float") || ($1.tipo == "float" && $3.tipo == "int")) {
-				$1 = converter_implicitamente($1, "float");
-				$3 = converter_implicitamente($3, "float");
-			} else {
-				yyerror("Erro: tipos incompatíveis em '>'");
-			}
-		}
-		$$.label = gentempcode();
-		$$.tipo = "boolean";
-		declaracoes_temp[$$.label] = "boolean";
-		$$.traducao = $1.traducao + $3.traducao +
-					"\t" + $$.label + " = " + $1.label + " > " + $3.label + ";\n";
-	}
+	{ $$ = criar_expressao_binaria($1, ">", ">", $3); }
 	| E '&' E
-	{
-		if ($1.tipo != "boolean" || $3.tipo != "boolean")
-			yyerror("Erro: operandos de '&' (AND logico) devem ser booleanos");
-		$$.label = gentempcode();
-		$$.tipo = "boolean";
-		declaracoes_temp[$$.label] = "boolean";
-		$$.traducao = $1.traducao + $3.traducao +
-			"\t" + $$.label + " = " + $1.label + " && " + $3.label + ";\n";
-	}
+	{ $$ = criar_expressao_binaria($1, "&", "&&", $3); }
 	| E '|' E
-	{
-		if ($1.tipo != "boolean" || $3.tipo != "boolean")
-			yyerror("Erro: operandos de '|' (OR logico) devem ser booleanos");
-		$$.label = gentempcode();
-		$$.tipo = "boolean";
-		declaracoes_temp[$$.label] = "boolean";
-		$$.traducao = $1.traducao + $3.traducao +
-			"\t" + $$.label + " = " + $1.label + " || " + $3.label + ";\n";
-	}
+	{ $$ = criar_expressao_binaria($1, "|", "||", $3); }
 	| '~' E
-	{
-		if ($2.tipo != "boolean")
-			yyerror("Erro: operando de '~' (NOT logico) deve ser booleano");
-		$$.label = gentempcode();
-		$$.tipo = "boolean";
-		declaracoes_temp[$$.label] = "boolean";
-		$$.traducao = $2.traducao +
-			"\t" + $$.label + " = !" + $2.label + ";\n";
-	}
+	{ $$ = criar_expressao_unaria_not($2); }
 	| E TK_MAIOR_IGUAL E
-	{
-		if ($1.tipo != $3.tipo) {
-			if (($1.tipo == "int" && $3.tipo == "float") || ($1.tipo == "float" && $3.tipo == "int")) {
-				$1 = converter_implicitamente($1, "float");
-				$3 = converter_implicitamente($3, "float");
-			} else {
-				yyerror("Erro: tipos incompatíveis em '>='");
-			}
-		}
-		$$.label = gentempcode();
-		$$.tipo = "boolean";
-		declaracoes_temp[$$.label] = "boolean";
-		$$.traducao = $1.traducao + $3.traducao +
-					"\t" + $$.label + " = " + $1.label + " >= " + $3.label + ";\n";
-	}
+	{ $$ = criar_expressao_binaria($1, ">=", ">=", $3); }
 	| E TK_MENOR_IGUAL E
-	{
-		if ($1.tipo != $3.tipo) {
-			if (($1.tipo == "int" && $3.tipo == "float") || ($1.tipo == "float" && $3.tipo == "int")) {
-				$1 = converter_implicitamente($1, "float");
-				$3 = converter_implicitamente($3, "float");
-			} else {
-				yyerror("Erro: tipos incompatíveis em '<='");
-			}
-		}
-		$$.label = gentempcode();
-		$$.tipo = "boolean";
-		declaracoes_temp[$$.label] = "boolean";
-		$$.traducao = $1.traducao + $3.traducao +
-					"\t" + $$.label + " = " + $1.label + " <= " + $3.label + ";\n";
-	}
+	{ $$ = criar_expressao_binaria($1, "<=", "<=", $3); }
 	| E TK_DIFERENTE E
-	{
-		if ($1.tipo != $3.tipo) {
-			if (($1.tipo == "int" && $3.tipo == "float") || ($1.tipo == "float" && $3.tipo == "int")) {
-				$1 = converter_implicitamente($1, "float");
-				$3 = converter_implicitamente($3, "float");
-			} else {
-				yyerror("Erro: tipos incompatíveis em '!='");
-			}
-		}
-		$$.label = gentempcode();
-		$$.tipo = "boolean";
-		declaracoes_temp[$$.label] = "boolean";
-		$$.traducao = $1.traducao + $3.traducao +
-					"\t" + $$.label + " = " + $1.label + " != " + $3.label + ";\n";
-	}
+	{ $$ = criar_expressao_binaria($1, "!=", "!=", $3); }
 	| E TK_IGUAL_IGUAL E
-	{
-		if ($1.tipo != $3.tipo) {
-			if (($1.tipo == "int" && $3.tipo == "float") || ($1.tipo == "float" && $3.tipo == "int")) {
-				$1 = converter_implicitamente($1, "float");
-				$3 = converter_implicitamente($3, "float");
-			} else {
-				yyerror("Erro: tipos incompatíveis em '=='");
-			}
-		}
-		$$.label = gentempcode();
-		$$.tipo = "boolean";
-		declaracoes_temp[$$.label] = "boolean";
-		$$.traducao = $1.traducao + $3.traducao +
-					"\t" + $$.label + " = " + $1.label + " == " + $3.label + ";\n";
-	}
+	{ $$ = criar_expressao_binaria($1, "==", "==", $3); }
 	| '(' E ')'
 	{
 		$$ = $2;
@@ -508,6 +423,8 @@ E : E '+' E
 
 %%
 
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 #include "lex.yy.c"
 
 string gentempcode()
@@ -524,6 +441,7 @@ int main(int argc, char* argv[])
 	entrar_escopo();
 	declaracoes_temp.clear();
 	ordem_declaracoes.clear();
+	mapa_c_para_original.clear();
 	yyparse();
 	sair_escopo();
 	return 0;
