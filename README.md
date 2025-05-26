@@ -14,7 +14,7 @@ Este projeto tem como objetivo o desenvolvimento de uma **linguagem de programa�
 - [x] Implementar escopo global e blocos
 - [ ] Suporte a strings e concatenação
 - [ ] Comandos de entrada e saída
-- [ ] Comando `if`, `if/else`
+- [x] Comando `if`, `if/else`
 - [ ] Comandos de laço: `while`, `do/while`, `for`
 - [ ] Comando `switch`
 - [ ] Controle de laços: `break`, `continue`

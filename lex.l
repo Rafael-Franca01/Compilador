@@ -23,6 +23,9 @@ ID          {LETRA}({LETRA}|{DIGITO})*
 {DELIM}		{}
 
 "main"		{ return TK_MAIN; }
+"if"		{ return TK_IF; }
+"helcio"		{ return TK_ELSE; }
+"whl"		{ return TK_WHILE; }
 
 "int"		{ return TK_TIPO_INT; }
 "flt"		{ return TK_TIPO_FLOAT; }

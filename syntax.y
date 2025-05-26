@@ -8,7 +8,7 @@
 #define YYSTYPE atributos
 
 using namespace std;
-
+int goto_label_qnt = 0;
 int var_temp_qnt = 0;
 int contador_linha = 1;
 
@@ -35,6 +35,11 @@ static const map<string, string> mapa_tipos_linguagem_para_c = {
 int yylex(void);
 void yyerror(string);
 string gentempcode();
+
+string genlabel(){
+	return "G" + to_string(++goto_label_qnt);
+}
+
 
 atributos converter_implicitamente(atributos op, string tipo_destino) {
 	if (op.tipo == tipo_destino) return op;
@@ -194,7 +199,8 @@ atributos criar_expressao_unaria_not(atributos op) {
 
 %token TK_MENOR_IGUAL TK_MAIOR_IGUAL TK_IGUAL_IGUAL TK_DIFERENTE
 %token TK_NUM TK_FLOAT TK_TRUE TK_FALSE TK_CHAR
-%token TK_MAIN TK_ID TK_TIPO_INT TK_TIPO_FLOAT TK_TIPO_CHAR TK_TIPO_BOOL
+%token TK_MAIN TK_IF TK_ELSE TK_WHILE
+%token TK_TIPO_INT TK_TIPO_FLOAT TK_TIPO_CHAR TK_TIPO_BOOL TK_ID
 %token TK_FIM TK_ERROR
 
 %start SEXO
@@ -258,6 +264,16 @@ COMANDOS : COMANDO COMANDOS
 
 COMANDO : DECLARACAO { $$ = $1; }
 	| E ';' { $$ = $1; }
+	| TK_IF '(' E ')' BLOCO
+	{
+		string label_fim = genlabel();
+		$$.traducao = $3.traducao; 
+    $$.traducao += "\tif (!" + $3.label + "){\n";
+		$$.traducao += "\t\tgoto " + label_fim + ";\n";
+		$$.traducao += "\t}\n";
+    $$.traducao += $5.traducao; 
+    $$.traducao += label_fim + ":\n";       
+	} 
 	| BLOCO { $$ = $1; }
 	;
 
