@@ -104,7 +104,7 @@ string gerar_codigo_declaracoes(
 	const vector<string>& p_ordem_declaracoes, 
 	const map<string, string>& p_declaracoes_temp, 
 	const map<string, string>& p_mapa_c_para_original
-	) {
+	) {	
     string codigo_local;
     for (const auto &c_name : p_ordem_declaracoes) {
         auto it_decl_type = p_declaracoes_temp.find(c_name);
@@ -203,12 +203,21 @@ atributos criar_expressao_unaria_not(atributos op) {
 %token TK_TIPO_INT TK_TIPO_FLOAT TK_TIPO_CHAR TK_TIPO_BOOL TK_ID
 %token TK_FIM TK_ERROR
 
-%start SEXO
+%start RAIZ
 
 %left '+' '-'
 %left '*' '/'
 
 %%
+
+RAIZ : SEXO 
+	{
+		string includes = "/Compilador PCD/\n"
+                      "#include <iostream>\n"
+                      "#include <string.h>\n" 
+                      "#include <stdio.h>\n\n"; 
+    cout << includes << $1.traducao << endl;
+	}
 
 SEXO : S SEXO
 	{ $$.traducao = $1.traducao + $2.traducao; }
@@ -217,21 +226,13 @@ SEXO : S SEXO
 
 S : TK_TIPO_INT TK_MAIN '(' ')' BLOCO
 	{
-		string codigo = "/Compilador PCD/\n"
-						"#include <iostream>\n"
-						"#include<string.h>\n"
-						"#include<stdio.h>\n";
-		codigo +=			"int main(void) {\n";
-
-
+		string codigo;
+		codigo += "int main(void) {\n";
 		codigo += gerar_codigo_declaracoes(ordem_declaracoes, declaracoes_temp, mapa_c_para_original);
-
 		codigo += "\n";
 		codigo += $5.traducao;
 		codigo += "\treturn 0;\n}";
-
-		cout << codigo << endl;
-
+		$$.traducao = codigo;
 		ordem_declaracoes.clear();
 		declaracoes_temp.clear();
 	}
@@ -239,12 +240,18 @@ S : TK_TIPO_INT TK_MAIN '(' ')' BLOCO
 	{
 		string codigo;
 		codigo = gerar_codigo_declaracoes(ordem_declaracoes, declaracoes_temp, mapa_c_para_original);
-
 		codigo += "\n";
 		codigo += $1.traducao;
-
-		cout << codigo << endl;
-
+		$$.traducao = codigo;
+		ordem_declaracoes.clear();
+		declaracoes_temp.clear();
+	}
+	| COMANDO
+	{
+		string codigo;
+		codigo += gerar_codigo_declaracoes(ordem_declaracoes, declaracoes_temp, mapa_c_para_original);
+		codigo += $1.traducao;
+		$$.traducao = codigo;
 		ordem_declaracoes.clear();
 		declaracoes_temp.clear();
 	}
@@ -255,6 +262,10 @@ BLOCO : '{' { entrar_escopo(); } COMANDOS '}'
 		sair_escopo();
 		$$.traducao = $3.traducao;
 	}
+	/* | COMANDO
+	{
+		$$.traducao = $1.traducao;
+	} */
 	;
 
 COMANDOS : COMANDO COMANDOS
