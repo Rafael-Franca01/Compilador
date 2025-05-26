@@ -1,7 +1,10 @@
 
+{
+	flt doidera;
+}
 int c;
 int b;
-
+b = b + 1;
 int main() {
 	int a;
 }

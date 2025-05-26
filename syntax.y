@@ -224,7 +224,16 @@ SEXO : S SEXO
 	| { $$.traducao = ""; }
 	;
 
-S : TK_TIPO_INT TK_MAIN '(' ')' BLOCO
+S : COMANDO
+	{
+		string codigo;
+		codigo += gerar_codigo_declaracoes(ordem_declaracoes, declaracoes_temp, mapa_c_para_original);
+		codigo += $1.traducao;
+		$$.traducao = codigo;
+		ordem_declaracoes.clear();
+		declaracoes_temp.clear();
+	}
+| TK_TIPO_INT TK_MAIN '(' ')' BLOCO
 	{
 		string codigo;
 		codigo += "int main(void) {\n";
@@ -236,26 +245,6 @@ S : TK_TIPO_INT TK_MAIN '(' ')' BLOCO
 		ordem_declaracoes.clear();
 		declaracoes_temp.clear();
 	}
-	| BLOCO
-	{
-		string codigo;
-		codigo = gerar_codigo_declaracoes(ordem_declaracoes, declaracoes_temp, mapa_c_para_original);
-		codigo += "\n";
-		codigo += $1.traducao;
-		$$.traducao = codigo;
-		ordem_declaracoes.clear();
-		declaracoes_temp.clear();
-	}
-	| COMANDO
-	{
-		string codigo;
-		codigo += gerar_codigo_declaracoes(ordem_declaracoes, declaracoes_temp, mapa_c_para_original);
-		codigo += $1.traducao;
-		$$.traducao = codigo;
-		ordem_declaracoes.clear();
-		declaracoes_temp.clear();
-	}
-	;
 
 BLOCO : '{' { entrar_escopo(); } COMANDOS '}'
 	{
