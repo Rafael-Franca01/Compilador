@@ -274,6 +274,20 @@ COMANDO : DECLARACAO { $$ = $1; }
     $$.traducao += $5.traducao; 
     $$.traducao += label_fim + ":\n";       
 	} 
+	| TK_IF '(' E ')' BLOCO TK_ELSE BLOCO
+	{
+		string label_fim = genlabel();
+		string label_else = genlabel();
+		$$.traducao = $3.traducao; 
+		$$.traducao += "\tif (!" + $3.label + "){\n";
+		$$.traducao += "\t\tgoto " + label_else + ";\n";
+		$$.traducao += "\t}\n";
+		$$.traducao += $5.traducao; 
+		$$.traducao += "\tgoto " + label_fim + ";\n";
+		$$.traducao += label_else + ":\n"; 
+		$$.traducao += $7.traducao; 
+		$$.traducao += label_fim + ":\n";       
+	}
 	| BLOCO { $$ = $1; }
 	;
 
