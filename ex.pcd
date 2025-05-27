@@ -1,10 +1,9 @@
 
-{
-	flt doidera;
-}
-int c;
-int b;
-b = b + 1;
 int main() {
 	int a;
+	
+	boo b;
+	a = 1;
+	b = true;
+
 }

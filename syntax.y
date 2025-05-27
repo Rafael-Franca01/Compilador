@@ -264,6 +264,7 @@ COMANDOS : COMANDO COMANDOS
 
 COMANDO : DECLARACAO { $$ = $1; }
 	| E ';' { $$ = $1; }
+	| TK_IF '(' ')' { yyerror("Erro: Condição vazia em 'if'."); $$ = atributos(); }
 	| TK_IF '(' E ')' BLOCO
 	{
 		string label_fim = genlabel();
@@ -288,6 +289,22 @@ COMANDO : DECLARACAO { $$ = $1; }
 		$$.traducao += $7.traducao; 
 		$$.traducao += label_fim + ":\n";       
 	}
+	| TK_WHILE '(' ')' { yyerror("Erro: Condição vazia em 'if'."); $$ = atributos(); }
+	| TK_WHILE '(' E ')' BLOCO
+    {
+        string label_inicio_while = genlabel(); // Ex: G1
+        string label_fim_while = genlabel();    // Ex: G2
+
+        $$.traducao = label_inicio_while + ":\n";           // G1:
+        $$.traducao += $3.traducao;                         //   código da expressão (condição)
+                                                            //   (ex: t1 = a < 10;)
+        $$.traducao += "\tif (!" + $3.label + "){\n";       //   if (!t1) {
+        $$.traducao += "\t\tgoto " + label_fim_while + ";\n"; //     goto G2;
+        $$.traducao += "\t}\n";                             //   }
+        $$.traducao += $5.traducao;                         //   código do bloco do while
+        $$.traducao += "\tgoto " + label_inicio_while + ";\n"; //   goto G1;
+        $$.traducao += label_fim_while + ":\n";             // G2:
+    }
 	| BLOCO { $$ = $1; }
 	;
 
