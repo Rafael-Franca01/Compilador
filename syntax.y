@@ -199,7 +199,7 @@ atributos criar_expressao_unaria_not(atributos op) {
 
 %token TK_MENOR_IGUAL TK_MAIOR_IGUAL TK_IGUAL_IGUAL TK_DIFERENTE
 %token TK_NUM TK_FLOAT TK_TRUE TK_FALSE TK_CHAR
-%token TK_MAIN TK_IF TK_ELSE TK_WHILE
+%token TK_MAIN TK_IF TK_ELSE TK_WHILE TK_FOR TK_DO TK_SWITCH
 %token TK_TIPO_INT TK_TIPO_FLOAT TK_TIPO_CHAR TK_TIPO_BOOL TK_ID
 %token TK_FIM TK_ERROR
 
@@ -289,7 +289,7 @@ COMANDO : DECLARACAO { $$ = $1; }
 		$$.traducao += $7.traducao; 
 		$$.traducao += label_fim + ":\n";       
 	}
-	| TK_WHILE '(' ')' { yyerror("Erro: Condição vazia em 'if'."); $$ = atributos(); }
+	| TK_WHILE '(' ')' { yyerror("Erro: Condição vazia em 'whl'."); $$ = atributos(); }
 	| TK_WHILE '(' E ')' BLOCO
     {
         string label_inicio_while = genlabel(); // Ex: G1
@@ -305,6 +305,37 @@ COMANDO : DECLARACAO { $$ = $1; }
         $$.traducao += "\tgoto " + label_inicio_while + ";\n"; //   goto G1;
         $$.traducao += label_fim_while + ":\n";             // G2:
     }
+	| TK_DO BLOCO { yyerror("Erro: 'do' necessitaa de um 'whl'."); $$ = atributos(); }
+	| TK_DO BLOCO TK_WHILE '(' ')' ';' { yyerror("Erro: Condição vazia em 'whl'."); $$ = atributos(); }
+	| TK_DO BLOCO TK_WHILE '(' E ')' ';'
+	{
+		string label_inicio_do = genlabel(); // Ex: G1
+		string label_fim_do = genlabel();    // Ex: G2
+
+		$$.traducao = label_inicio_do + ":\n"; // G1:
+		$$.traducao += $2.traducao;             //   código do bloco do do-while
+		$$.traducao += $5.traducao;             //   código da expressão (condição)
+		$$.traducao += "\tif (" + $5.label + "){\n"; // if (t1) {
+		$$.traducao += "\t\tgoto " + label_inicio_do + ";\n"; //     goto G1;
+		$$.traducao += "\t}\n";                 //   }
+		$$.traducao += label_fim_do + ":\n";    // G2:
+	}
+	| TK_FOR '(' E ';' E ';' E ')' BLOCO
+	{
+		string label_inicio_for = genlabel(); // Ex: G1
+		string label_fim_for = genlabel();    // Ex: G2
+
+		$$.traducao = $3.traducao;             // Código da inicialização (E1)
+		$$.traducao += label_inicio_for + ":\n"; // G1:
+		$$.traducao += $5.traducao;             // Código da condição (E2)
+		$$.traducao += "\tif (!" + $5.label + "){\n"; // if (!t2) {
+		$$.traducao += "\t\tgoto " + label_fim_for + ";\n"; //     goto G2;
+		$$.traducao += "\t}\n";     
+		$$.traducao += $9.traducao;             // Código do incremento (E3)            //   }
+		$$.traducao += $7.traducao;             // Código do bloco do for
+		$$.traducao += "\tgoto " + label_inicio_for + ";\n"; // goto G1;
+		$$.traducao += label_fim_for + ":\n";   // G2:
+	}
 	| BLOCO { $$ = $1; }
 	;
 

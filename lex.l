@@ -24,8 +24,11 @@ ID          {LETRA}({LETRA}|{DIGITO})*
 
 "main"		{ return TK_MAIN; }
 "if"		{ return TK_IF; }
-"helcio"		{ return TK_ELSE; }
+"helcio"	{ return TK_ELSE; }
+"swc"		{ return TK_SWITCH; }
 "whl"		{ return TK_WHILE; }
+"do"		{ return TK_DO; }
+"for"		{ return TK_FOR; }
 
 "int"		{ return TK_TIPO_INT; }
 "flt"		{ return TK_TIPO_FLOAT; }

@@ -1,9 +1,12 @@
+int a;
 
 int main() {
-	int a;
-	
-	boo b;
+	int c;
+	c = 2;
 	a = 1;
-	b = true;
+
+	for(a=0; a < 2; a = a + 1){
+		c = a;
+	}
 
 }
