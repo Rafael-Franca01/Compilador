@@ -35,6 +35,9 @@ ID          {LETRA}({LETRA}|{DIGITO})*
 "boo"	    { return TK_TIPO_BOOL; }
 "chr"		{ return TK_TIPO_CHAR; }
 
+"++"      { return TK_MAIS_MAIS; }
+"--"      { return TK_MENOS_MENOS; }
+
 "true"		{ yylval.label = "1"; yylval.tipo = "boolean"; return TK_TRUE; }
 "false"		{ yylval.label = "0"; yylval.tipo = "boolean"; return TK_FALSE; }
 

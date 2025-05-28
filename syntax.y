@@ -205,14 +205,19 @@ atributos criar_expressao_unaria(atributos op, string op_str_lexical) {
 %token TK_MENOR_IGUAL TK_MAIOR_IGUAL TK_IGUAL_IGUAL TK_DIFERENTE
 %token TK_NUM TK_FLOAT TK_TRUE TK_FALSE TK_CHAR
 %token TK_MAIN TK_IF TK_ELSE TK_WHILE TK_FOR TK_DO TK_SWITCH
-%token TK_TIPO_INT TK_TIPO_FLOAT TK_TIPO_CHAR TK_TIPO_BOOL TK_ID
+%token TK_TIPO_INT TK_TIPO_FLOAT TK_TIPO_CHAR TK_TIPO_BOOL TK_ID TK_MAIS_MAIS TK_MENOS_MENOS
 %token TK_FIM TK_ERROR
 
 %start RAIZ
-
+%right '='
+%left '|' 
+%left '&'
+%nonassoc TK_IGUAL_IGUAL TK_DIFERENTE
+%nonassoc '<' '>' TK_MENOR_IGUAL TK_MAIOR_IGUAL
 %left '+' '-'
 %left '*' '/'
-
+%right '~'
+%left TK_MAIS_MAIS TK_MENOS_MENOS 
 %%
 
 RAIZ : SEXO 
@@ -309,7 +314,6 @@ COMANDO : COD ';' { $$ = $1; }
         $$.traducao += "\tgoto " + label_inicio_while + ";\n"; //   goto G1;
         $$.traducao += label_fim_while + ":\n";             // G2:
     }
-	| TK_DO BLOCO { yyerror("Erro: 'do' necessitaa de um 'whl'."); $$ = atributos(); }
 	| TK_DO BLOCO TK_WHILE '(' ')' ';' { yyerror("Erro: Condição vazia em 'whl'."); $$ = atributos(); }
 	| TK_DO BLOCO TK_WHILE '(' E ')' ';'
 	{
@@ -417,9 +421,9 @@ E : E '+' E
 	{ $$ = criar_expressao_binaria($1, "|", "||", $3); }
 	| '~' E
 	{ $$ = criar_expressao_unaria($2, "~"); }	
-	| E '-''-' 
+	| E TK_MENOS_MENOS
 	{ $$ = criar_expressao_unaria($1, "-"); }
-	| E '+''+' 
+	| E TK_MAIS_MAIS
 	{ $$ = criar_expressao_unaria($1, "+"); }
 	| E TK_MAIOR_IGUAL E
 	{ $$ = criar_expressao_binaria($1, ">=", ">=", $3); }
