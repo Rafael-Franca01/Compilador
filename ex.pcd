@@ -1,12 +1,6 @@
-int a;
-
 int main() {
-	int c;
-	c = 2;
-	a = 1;
-
-	for(a=0; a < 2; a = a + 1){
-		c = a;
+	int b;
+	for(int i = 0; i < 10; i++){
+		int a = 2;
 	}
-
 }
