@@ -29,7 +29,8 @@ static const map<string, string> mapa_tipos_linguagem_para_c = {
 		{"int", "int"},
 		{"float", "float"},
 		{"char", "char"},
-		{"boolean", "int"}
+		{"boolean", "int"},
+		{"string", "char*"}
 };
  
 int yylex(void);
@@ -180,10 +181,12 @@ atributos criar_expressao_binaria(atributos op1, string op_str_lexical, string o
 
 atributos criar_expressao_unaria(atributos op, string op_str_lexical) {
 	atributos res;
-	if (op.tipo != "boolean" && op_str_lexical != "~") {
+	if (op.tipo != "boolean" || op_str_lexical != "~") {
 		if (op.tipo == "int" || op.tipo == "float") {
+			res.label = gentempcode();
 			res.tipo = op.tipo; // mantém o tipo original
-			res.traducao = op.traducao + "\t" + op.label + " = " + op.label + " " + op_str_lexical + " 1;\n";
+			declaracoes_temp[res.label] = res.tipo;
+			res.traducao = op.traducao + "\t" + res.label + " = " + op.label + " " + op_str_lexical + " 1;\n";
 			return res;
 		} else {
 			yyerror("Erro: Operador unário '" + op_str_lexical + "' só pode ser aplicado a tipos numéricos.");
@@ -203,21 +206,22 @@ atributos criar_expressao_unaria(atributos op, string op_str_lexical) {
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 %token TK_MENOR_IGUAL TK_MAIOR_IGUAL TK_IGUAL_IGUAL TK_DIFERENTE
-%token TK_NUM TK_FLOAT TK_TRUE TK_FALSE TK_CHAR
-%token TK_MAIN TK_IF TK_ELSE TK_WHILE TK_FOR TK_DO TK_SWITCH
-%token TK_TIPO_INT TK_TIPO_FLOAT TK_TIPO_CHAR TK_TIPO_BOOL TK_ID TK_MAIS_MAIS TK_MENOS_MENOS
+%token TK_NUM TK_FLOAT TK_TRUE TK_FALSE TK_CHAR TK_STRING
+%token TK_MAIN TK_IF TK_ELSE TK_WHILE TK_FOR TK_DO TK_SWITCH TK_PRINT
+%token TK_TIPO_INT TK_TIPO_FLOAT TK_TIPO_CHAR TK_TIPO_BOOL TK_TIPO_STRING TK_ID TK_MAIS_MAIS TK_MENOS_MENOS
 %token TK_FIM TK_ERROR
 
 %start RAIZ
+%right CAST
 %right '='
 %left '|' 
 %left '&'
-%nonassoc TK_IGUAL_IGUAL TK_DIFERENTE
-%nonassoc '<' '>' TK_MENOR_IGUAL TK_MAIOR_IGUAL
+%left TK_IGUAL_IGUAL TK_DIFERENTE
+%left '<' '>' TK_MENOR_IGUAL TK_MAIOR_IGUAL
 %left '+' '-'
 %left '*' '/'
 %right '~'
-%left TK_MAIS_MAIS TK_MENOS_MENOS 
+%right TK_MAIS_MAIS TK_MENOS_MENOS 
 %%
 
 RAIZ : SEXO 
@@ -250,7 +254,7 @@ S : COMANDO
 		codigo += gerar_codigo_declaracoes(ordem_declaracoes, declaracoes_temp, mapa_c_para_original);
 		codigo += "\n";
 		codigo += $5.traducao;
-		codigo += "\treturn 0;\n}";
+		codigo += "\treturn 0;\n}\n";
 		$$.traducao = codigo;
 		ordem_declaracoes.clear();
 		declaracoes_temp.clear();
@@ -261,18 +265,21 @@ BLOCO : '{' { entrar_escopo(); } COMANDOS '}'
 		sair_escopo();
 		$$.traducao = $3.traducao;
 	}
-	/* | COMANDO
-	{
-		$$.traducao = $1.traducao;
-	} */
 	;
 
 COMANDOS : COMANDO COMANDOS
 	{ $$.traducao = $1.traducao + $2.traducao; }
-	| { $$.traducao = ""; }
+	| 
+	{ 
+		$$.traducao = ""; 
+	}
 	;
 
 COMANDO : COD ';' { $$ = $1; }
+	| TK_PRINT '(' E ')' ';'
+	{
+		$$.traducao = $3.traducao + "\tcout << " + $3.label + " << endl;\n";
+	}
 	| TK_IF '(' ')' { yyerror("Erro: Condição vazia em 'if'."); $$ = atributos(); }
 	| TK_IF '(' E ')' BLOCO
 	{
@@ -345,6 +352,10 @@ COMANDO : COD ';' { $$ = $1; }
 		$$.traducao += label_fim_for + ":\n";   // G2:
 		sair_escopo(); // Sair do escopo do for
 	}
+	| BLOCO
+	{
+		$$.traducao = $1.traducao;
+	}
 	;
 COD : DECLARACAO 
 	{
@@ -354,6 +365,7 @@ COD : DECLARACAO
 	{
 		$$.traducao = $1.traducao;
 	}
+	;
 DECLARACAO : TIPO TK_ID 
 	{
 		string original_name = $2.label;
@@ -401,6 +413,7 @@ TIPO : TK_TIPO_INT { $$.tipo = "int"; }
 	| TK_TIPO_FLOAT { $$.tipo = "float"; }
 	| TK_TIPO_BOOL { $$.tipo = "boolean"; }
 	| TK_TIPO_CHAR { $$.tipo = "char"; }
+	| TK_TIPO_STRING { $$.tipo = "string"; }
 	;
 
 E : E '+' E
@@ -497,6 +510,13 @@ E : E '+' E
 		$$.tipo = "boolean";
 		declaracoes_temp[$$.label] = $$.tipo;
 	}
+	| TK_STRING
+	{
+		$$.label = gentempcode();
+		$$.traducao = "\t" + $$.label + " = " + $1.label + ";\n";
+		$$.tipo = "string";
+		declaracoes_temp[$$.label] = $$.tipo;
+	}
 	| TK_FALSE
 	{
 		$$.label = gentempcode();
@@ -518,7 +538,7 @@ E : E '+' E
 			$$.tipo = simb_ptr->tipo;
 		}
 	}
-	| '(' TIPO ')' E
+	| '(' TIPO ')' E %prec CAST
 	{
 		string origem = $4.tipo;
 		string destino = $2.tipo;

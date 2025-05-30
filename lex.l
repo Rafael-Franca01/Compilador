@@ -14,6 +14,8 @@ DELIM       {ESPACO}+
 NUM         {DIGITO}+
 FLOAT       {DIGITO}+"."{DIGITO}+
 CHAR        \'([^\\]|\\[nrt0\\'"\\])\'
+stringo     \"([^\\"]|\\.)*\"
+STRING      {stringo}+
 ID          {LETRA}({LETRA}|{DIGITO})*
 
 %%
@@ -29,11 +31,14 @@ ID          {LETRA}({LETRA}|{DIGITO})*
 "whl"		{ return TK_WHILE; }
 "do"		{ return TK_DO; }
 "for"		{ return TK_FOR; }
+"prt"   { return TK_PRINT; }
+
 
 "int"		{ return TK_TIPO_INT; }
 "flt"		{ return TK_TIPO_FLOAT; }
 "boo"	    { return TK_TIPO_BOOL; }
 "chr"		{ return TK_TIPO_CHAR; }
+"str"       { return TK_TIPO_STRING; }
 
 "++"      { return TK_MAIS_MAIS; }
 "--"      { return TK_MENOS_MENOS; }
@@ -58,6 +63,7 @@ ID          {LETRA}({LETRA}|{DIGITO})*
 "=="        { return TK_IGUAL_IGUAL; }
 "!="        { return TK_DIFERENTE; } 
 
+{STRING}    { yylval.label = yytext; yylval.tipo = "string"; return TK_STRING;}
 {CHAR}      { yylval.label = yytext; yylval.tipo = "char"; return TK_CHAR; }
 {FLOAT}		{ yylval.label = yytext; yylval.tipo = "float"; return TK_FLOAT; }
 {NUM}		{ yylval.label = yytext; yylval.tipo = "int"; return TK_NUM; }

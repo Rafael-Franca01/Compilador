@@ -12,10 +12,10 @@ Este projeto tem como objetivo o desenvolvimento de uma **linguagem de programa�
 
 # 🧱 Etapa 2 - Controle e Estrutura
 - [x] Implementar escopo global e blocos
-- [ ] Suporte a strings e concatenação
-- [ ] Comandos de entrada e saída
+- [x] Suporte a strings e concatenação
+- [x] Comandos de entrada e saída
 - [x] Comando `if`, `if/else`
-- [ ] Comandos de laço: `while`, `do/while`, `for`
+- [x] Comandos de laço: `while`, `do/while`, `for`
 - [ ] Comando `switch`
 - [ ] Controle de laços: `break`, `continue`
 
