@@ -32,7 +32,8 @@ ID          {LETRA}({LETRA}|{DIGITO})*
 "do"		{ return TK_DO; }
 "for"		{ return TK_FOR; }
 "prt"   { return TK_PRINT; }
-
+"brk"   { return TK_BREAK; }
+"cnt"   { return TK_CONTINUE; }
 
 "int"		{ return TK_TIPO_INT; }
 "flt"		{ return TK_TIPO_FLOAT; }

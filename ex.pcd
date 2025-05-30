@@ -1,6 +1,21 @@
 int main() {
 	int a;
-	int b;
-	prt((a + b) * 3);
+	int i = 0;
+	
+	whl(i < 3){
+		if(i == 1){
+			brk;
+		}
+		a = i;
+		i++;
+	}
 
+    i = 0;
+
+	for(i; i< 3; i++){
+		if(i == 1){
+			cnt;
+		}
+		a = i;
+	}
 }
