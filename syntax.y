@@ -24,6 +24,8 @@ vector<map<string, atributos>> pilha_tabelas_simbolos;
 vector<string> ordem_declaracoes;
 map<string, string> declaracoes_temp;
 map<string, string> mapa_c_para_original;
+vector<pair<string, string>> pilha_loops;
+
 
 static const map<string, string> mapa_tipos_linguagem_para_c = {
 		{"int", "int"},
@@ -183,7 +185,7 @@ atributos criar_expressao_unaria(atributos op, string op_str_lexical) {
 	atributos res;
 	if (op.tipo != "boolean" || op_str_lexical != "~") {
 		if (op.tipo == "int" || op.tipo == "float") {
-			res.label = gentempcode();
+			res.label = op.label;
 			res.tipo = op.tipo; // mantém o tipo original
 			declaracoes_temp[res.label] = res.tipo;
 			res.traducao = op.traducao + "\t" + res.label + " = " + op.label + " " + op_str_lexical + " 1;\n";
@@ -207,7 +209,7 @@ atributos criar_expressao_unaria(atributos op, string op_str_lexical) {
 
 %token TK_MENOR_IGUAL TK_MAIOR_IGUAL TK_IGUAL_IGUAL TK_DIFERENTE
 %token TK_NUM TK_FLOAT TK_TRUE TK_FALSE TK_CHAR TK_STRING
-%token TK_MAIN TK_IF TK_ELSE TK_WHILE TK_FOR TK_DO TK_SWITCH TK_PRINT
+%token TK_MAIN TK_IF TK_ELSE TK_WHILE TK_FOR TK_DO TK_SWITCH TK_PRINT TK_BREAK TK_CONTINUE
 %token TK_TIPO_INT TK_TIPO_FLOAT TK_TIPO_CHAR TK_TIPO_BOOL TK_TIPO_STRING TK_ID TK_MAIS_MAIS TK_MENOS_MENOS
 %token TK_FIM TK_ERROR
 
@@ -278,7 +280,27 @@ COMANDOS : COMANDO COMANDOS
 COMANDO : COD ';' { $$ = $1; }
 	| TK_PRINT '(' E ')' ';'
 	{
-		$$.traducao = $3.traducao + "\tcout << " + $3.label + " << endl;\n";
+		$$.traducao = $3.traducao + "\tcout << " + $3.label + ";\n";
+	}
+	| TK_BREAK ';'
+	{
+		if (pilha_loops.empty()) {
+			yyerror("Erro: 'brk' fora de um loop.");
+			$$ = atributos();
+		} else {
+			string label_fim_loop = pilha_loops.back().first;
+			$$.traducao = "\tgoto " + label_fim_loop + ";\n";
+		}
+	}
+	|TK_CONTINUE ';'
+	{
+		if (pilha_loops.empty()) {
+			yyerror("Erro: 'cnt' fora de um loop.");
+			$$ = atributos();
+		} else {
+			string label_inicio_loop = pilha_loops.back().second;
+			$$.traducao = "\tgoto " + label_inicio_loop + ";\n";
+		}
 	}
 	| TK_IF '(' ')' { yyerror("Erro: Condição vazia em 'if'."); $$ = atributos(); }
 	| TK_IF '(' E ')' BLOCO
@@ -306,21 +328,31 @@ COMANDO : COD ';' { $$ = $1; }
 		$$.traducao += label_fim + ":\n";       
 	}
 	| TK_WHILE '(' ')' { yyerror("Erro: Condição vazia em 'whl'."); $$ = atributos(); }
-	| TK_WHILE '(' E ')' BLOCO
-	{
-			string label_inicio_while = genlabel(); // Ex: G1
-			string label_fim_while = genlabel();    // Ex: G2
+	| TK_WHILE '(' E ')'  //Na realidade fica, TK_WHILE '(' E ')' { /* Ação Intermediária */ } BLOCO
+      { //Ação Intermediária
+        string temp_loop_start = genlabel(); 
+        string temp_loop_end = genlabel();   
+        pilha_loops.push_back(make_pair(temp_loop_end, temp_loop_start));
 
-        $$.traducao = label_inicio_while + ":\n";           // G1:
-        $$.traducao += $3.traducao;                         //   código da expressão (condição)
-                                                            //   (ex: t1 = a < 10;)
-        $$.traducao += "\tif (!" + $3.label + "){\n";       //   if (!t1) {
-        $$.traducao += "\t\tgoto " + label_fim_while + ";\n"; //     goto G2;
-        $$.traducao += "\t}\n";                             //   }
-        $$.traducao += $5.traducao;                         //   código do bloco do while
-        $$.traducao += "\tgoto " + label_inicio_while + ";\n"; //   goto G1;
-        $$.traducao += label_fim_while + ":\n";             // G2:
-    }
+        $$ = $3; 
+      }
+      BLOCO 
+      { 
+        pair<string, string> current_loop_labels = pilha_loops.back();
+        string label_fim_while = current_loop_labels.first;
+        string label_inicio_while = current_loop_labels.second;
+
+		$$.traducao = label_inicio_while + ":\n";                // Marca o início do loop while
+		$$.traducao += $5.traducao;                              // Código da condição do while
+		$$.traducao += "\tif (!" + $5.label + "){\n";            // Se a condição for falsa
+		$$.traducao += "\t\tgoto " + label_fim_while + ";\n";    // Sai do loop (goto para o fim)
+		$$.traducao += "\t}\n";                                  // Fim do bloco if
+		$$.traducao += $6.traducao;                              // Código do corpo do loop
+		$$.traducao += "\tgoto " + label_inicio_while + ";\n";   // Volta para o início do loop
+		$$.traducao += label_fim_while + ":\n";                  // Marca o fim do loop while
+
+        pilha_loops.pop_back();
+      }
 	| TK_DO BLOCO TK_WHILE '(' ')' ';' { yyerror("Erro: Condição vazia em 'whl'."); $$ = atributos(); }
 	| TK_DO BLOCO TK_WHILE '(' E ')' ';'
 	{
@@ -335,23 +367,41 @@ COMANDO : COD ';' { $$ = $1; }
 		$$.traducao += "\t}\n";                 //   }
 		$$.traducao += label_fim_do + ":\n";    // G2:
 	}
-	| TK_FOR {entrar_escopo();}'(' COD ';' E ';' E ')' BLOCO
-	{
-		string label_inicio_for = genlabel(); // Ex: G1
-		string label_fim_for = genlabel();    // Ex: G2
+	| TK_FOR { entrar_escopo(); } '(' COD ';' E ';' // COD ($4), E-cond ($6)
+      { 
+        string temp_loop_continue = genlabel(); 
+        string temp_loop_break = genlabel();    
+        pilha_loops.push_back(make_pair(temp_loop_break, temp_loop_continue));
 
-		$$.traducao = $4.traducao;             // Código da inicialização (E1)
-		$$.traducao += label_inicio_for + ":\n"; // G1:
-		$$.traducao += $6.traducao;             // Código da condição (E2)
-		$$.traducao += "\tif (!" + $6.label + "){\n"; // if (!t2) {
-		$$.traducao += "\t\tgoto " + label_fim_for + ";\n"; //     goto G2;
-		$$.traducao += "\t}\n";     
-		$$.traducao += $10.traducao;             // Código do incremento (E3)            //   }
-		$$.traducao += $8.traducao;             // Código do bloco do for
-		$$.traducao += "\tgoto " + label_inicio_for + ";\n"; // goto G1;
-		$$.traducao += label_fim_for + ":\n";   // G2:
-		sair_escopo(); // Sair do escopo do for
-	}
+        $$ = $6; 
+      }
+      E ')' BLOCO 
+      { 
+
+        pair<string, string> current_loop_labels = pilha_loops.back();
+        string label_fim_for = current_loop_labels.first;
+        string label_continue_for = current_loop_labels.second;
+
+        string label_condicao_for = genlabel(); 
+
+        $$.traducao = $4.traducao;
+
+        $$.traducao += label_condicao_for + ":\n";         
+        $$.traducao += $8.traducao;                        
+        $$.traducao += "\tif (!" + $8.label + "){\n";      
+        $$.traducao += "\t\tgoto " + label_fim_for + ";\n"; 
+        $$.traducao += "\t}\n";                            
+        
+
+        $$.traducao += $11.traducao;                       
+        $$.traducao += label_continue_for + ":\n";         
+        $$.traducao += $9.traducao;                        
+        $$.traducao += "\tgoto " + label_condicao_for + ";\n"; 
+        $$.traducao += label_fim_for + ":\n";              
+
+        pilha_loops.pop_back();
+        sair_escopo();
+      }
 	| BLOCO
 	{
 		$$.traducao = $1.traducao;
