@@ -1,21 +1,13 @@
 int main() {
 	int a;
 	int i = 0;
-	
-	whl(i < 3){
-		if(i == 1){
-			brk;
-		}
+	do{
 		a = i;
-		i++;
-	}
-
-    i = 0;
-
-	for(i; i< 3; i++){
-		if(i == 1){
-			cnt;
-		}
+		cnt;
+	}whl(i<3);
+	int b = 2;
+	do{
 		a = i;
-	}
+		brk;
+	}whl(i<3);
 }

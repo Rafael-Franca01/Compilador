@@ -237,7 +237,7 @@ RAIZ : SEXO
 
 SEXO : S SEXO
 	{ $$.traducao = $1.traducao + $2.traducao; }
-	| { $$.traducao = ""; }
+	|  %empty { $$.traducao = ""; }
 	;
 
 S : COMANDO
@@ -272,7 +272,7 @@ BLOCO : '{' { entrar_escopo(); } COMANDOS '}'
 COMANDOS : COMANDO COMANDOS
 	{ $$.traducao = $1.traducao + $2.traducao; }
 	| 
-	{ 
+	 %empty { 
 		$$.traducao = ""; 
 	}
 	;
@@ -307,11 +307,11 @@ COMANDO : COD ';' { $$ = $1; }
 	{
 		string label_fim = genlabel();
 		$$.traducao = $3.traducao; 
-    $$.traducao += "\tif (!" + $3.label + "){\n";
+    	$$.traducao += "\tif (!" + $3.label + "){\n";
 		$$.traducao += "\t\tgoto " + label_fim + ";\n";
 		$$.traducao += "\t}\n";
-    $$.traducao += $5.traducao; 
-    $$.traducao += label_fim + ":\n";       
+    	$$.traducao += $5.traducao; 
+    	$$.traducao += label_fim + ":\n";       
 	} 
 	| TK_IF '(' E ')' BLOCO TK_ELSE BLOCO
 	{
@@ -353,20 +353,22 @@ COMANDO : COD ';' { $$ = $1; }
 
         pilha_loops.pop_back();
       }
-	| TK_DO BLOCO TK_WHILE '(' ')' ';' { yyerror("Erro: Condição vazia em 'whl'."); $$ = atributos(); }
-	| TK_DO BLOCO TK_WHILE '(' E ')' ';'
-	{
-		string label_inicio_do = genlabel(); // Ex: G1
-		string label_fim_do = genlabel();    // Ex: G2
+	| TK_DO M_DO_SETUP BLOCO TK_WHILE '(' E ')' ';'
+    {
+        string label_inicio_bloco = $2.label;     // Rótulo de continue (início do bloco), vindo de M_DO_SETUP
+        string label_fim_loop   = $2.traducao;  // Rótulo de break, vindo de M_DO_SETUP
 
-		$$.traducao = label_inicio_do + ":\n"; // G1:
-		$$.traducao += $2.traducao;             //   código do bloco do do-while
-		$$.traducao += $5.traducao;             //   código da expressão (condição)
-		$$.traducao += "\tif (" + $5.label + "){\n"; // if (t1) {
-		$$.traducao += "\t\tgoto " + label_inicio_do + ";\n"; //     goto G1;
-		$$.traducao += "\t}\n";                 //   }
-		$$.traducao += label_fim_do + ":\n";    // G2:
-	}
+        $$.traducao = label_inicio_bloco + ":\n";       // Início do bloco
+        $$.traducao += $3.traducao;                     // Código do BLOCO
+                                                        // O 'continue' dentro do BLOCO pularia para label_inicio_bloco
+        $$.traducao += $6.traducao;                     // Código da expressão da condição E
+        $$.traducao += "\tif (" + $6.label + "){\n";
+        $$.traducao += "\t\tgoto " + label_inicio_bloco + ";\n"; // Se verdadeiro, volta ao início do BLOCO
+        $$.traducao += "\t}\n";
+        $$.traducao += label_fim_loop + ":\n";          // Rótulo de saída do loop (para onde o 'break' pularia)
+
+        pilha_loops.pop_back(); // Remove os rótulos da pilha
+    }
 	| TK_FOR { entrar_escopo(); } '(' COD ';' E ';' // COD ($4), E-cond ($6)
       { 
         string temp_loop_continue = genlabel(); 
@@ -407,6 +409,21 @@ COMANDO : COD ';' { $$ = $1; }
 		$$.traducao = $1.traducao;
 	}
 	;
+M_DO_SETUP : %empty
+    {
+        string continue_label = genlabel(); // Será o rótulo para o início do bloco do DO
+        string break_label = genlabel();    // Será o rótulo para o qual o BREAK desviará
+
+        // Empilha: o primeiro é o rótulo de break, o segundo é o de continue
+        pilha_loops.push_back(make_pair(break_label, continue_label));
+
+        // Passa os rótulos para a regra principal do DO-WHILE
+        // Usando $$.label para continue_label e $$.traducao para break_label
+        $$.label = continue_label;
+        $$.traducao = break_label;
+        $$.tipo = "do_loop_setup_labels"; // Tipo opcional para depuração
+    }
+    ;
 COD : DECLARACAO 
 	{
 		$$.traducao = $1.traducao;
