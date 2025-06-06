@@ -104,32 +104,38 @@ void sair_escopo() {
 }
 
 string gerar_codigo_declaracoes(
-	const vector<string>& p_ordem_declaracoes, 
-	const map<string, string>& p_declaracoes_temp, 
-	const map<string, string>& p_mapa_c_para_original
-	) {	
-    string codigo_local;
-    for (const auto &c_name : p_ordem_declaracoes) {
-        auto it_decl_type = p_declaracoes_temp.find(c_name);
-        if (it_decl_type != p_declaracoes_temp.end()) {
-            const string& tipo_linguagem = it_decl_type->second;
+    const vector<string>& p_ordem_declaracoes, 
+    const map<string, string>& p_declaracoes_temp, 
+    const map<string, string>& p_mapa_c_para_original
+) { 
+	string codigo_local;
+	for (const auto &c_name : p_ordem_declaracoes) {
+			auto it_decl_type = p_declaracoes_temp.find(c_name);
+			if (it_decl_type != p_declaracoes_temp.end()) {
+					const string& tipo_linguagem = it_decl_type->second;
+					string tipo_c_str = ""; 
 
-            string tipo_c_str = tipo_linguagem; // Valor padrão
-            auto it_mapa_tipos = mapa_tipos_linguagem_para_c.find(tipo_linguagem);
-            if (it_mapa_tipos != mapa_tipos_linguagem_para_c.end()) {
-                tipo_c_str = it_mapa_tipos->second;
-            }
+					// Lógica modificada para declaração de string
+					if (tipo_linguagem == "string") {
+							tipo_c_str = "char*";
+							codigo_local += "\t" + tipo_c_str + " " + c_name + " = NULL;";
+					} else {
+							// Lógica para outros tipos permanece a mesma
+							auto it_mapa_tipos = mapa_tipos_linguagem_para_c.find(tipo_linguagem);
+							if (it_mapa_tipos != mapa_tipos_linguagem_para_c.end()) {
+									tipo_c_str = it_mapa_tipos->second;
+							}
+							codigo_local += "\t" + tipo_c_str + " " + c_name + ";";
+					}
 
-            codigo_local += "\t" + tipo_c_str + " " + c_name + ";";
-
-            auto it_orig_name = p_mapa_c_para_original.find(c_name);
-            if (it_orig_name != p_mapa_c_para_original.end()) {
-                codigo_local += " // " + it_orig_name->second; // Adiciona o comentário
-            }
-            codigo_local += "\n";
-        }
-    }
-    return codigo_local;
+					auto it_orig_name = p_mapa_c_para_original.find(c_name);
+					if (it_orig_name != p_mapa_c_para_original.end()) {
+							codigo_local += " // " + it_orig_name->second;
+					}
+					codigo_local += "\n";
+			}
+	}
+	return codigo_local;
 }
 
 atributos criar_expressao_binaria(atributos op1, string op_str_lexical, string op_str_c, atributos op2) {
@@ -205,8 +211,6 @@ atributos criar_expressao_unaria(atributos op, string op_str_lexical) {
 
 
 string contar_string(string ponteiro_destino_c_name, atributos string_origem_rhs) {
-    
-    
     string len_temp = gentempcode();
     declaracoes_temp[len_temp] = "int";
     string ptr_temp = gentempcode();
@@ -243,7 +247,7 @@ string contar_string(string ponteiro_destino_c_name, atributos string_origem_rhs
 
 %token TK_MENOR_IGUAL TK_MAIOR_IGUAL TK_IGUAL_IGUAL TK_DIFERENTE
 %token TK_NUM TK_FLOAT TK_TRUE TK_FALSE TK_CHAR TK_STRING
-%token TK_MAIN TK_IF TK_ELSE TK_WHILE TK_FOR TK_DO TK_SWITCH TK_PRINT TK_BREAK TK_CONTINUE
+%token TK_MAIN TK_IF TK_ELSE TK_WHILE TK_FOR TK_DO TK_SWITCH TK_PRINT TK_SCANF TK_BREAK TK_CONTINUE
 %token TK_TIPO_INT TK_TIPO_FLOAT TK_TIPO_CHAR TK_TIPO_BOOL TK_TIPO_STRING TK_ID TK_MAIS_MAIS TK_MENOS_MENOS
 %token TK_FIM TK_ERROR
 
@@ -317,6 +321,87 @@ COMANDO : COD ';' { $$ = $1; }
 	{
 		$$.traducao = $3.traducao + "\tcout << " + $3.label + ";\n";
 	}
+	| TK_SCANF '(' TK_ID ')' ';'
+    {
+        atributos* simb_ptr = buscar_simbolo($3.label);
+        if (!simb_ptr) {
+            yyerror("Erro Semantico: variavel '" + $3.label + "' nao declarada para receber.");
+            $$ = atributos();
+        } else {
+            string c_var_name = simb_ptr->label;
+            string var_tipo = simb_ptr->tipo;
+            $$.traducao = "";
+
+            if (var_tipo == "string") {
+                string len_temp = gentempcode();
+                string cap_temp = gentempcode();
+                string char_in_temp = gentempcode();
+                string scanf_ret_temp = gentempcode();
+                string ptr_dest_temp = gentempcode();
+                string cond_temp = gentempcode();
+                string cap_limit_temp = gentempcode();
+                string L_loop_start = genlabel();
+                string L_fim_loop = genlabel();
+                string L_skip_free = genlabel();
+                string L_skip_realloc = genlabel();
+                $$.traducao += "\t{\n";
+                $$.traducao += "\t\tint " + len_temp + " = 0;\n";
+                $$.traducao += "\t\tint " + cap_temp + " = 16;\n";
+                $$.traducao += "\t\tchar " + char_in_temp + ";\n";
+                $$.traducao += "\t\tint " + scanf_ret_temp + ";\n";
+                $$.traducao += "\t\tchar* " + ptr_dest_temp + ";\n";
+                $$.traducao += "\t\tint " + cond_temp + ";\n";
+                $$.traducao += "\t\tint " + cap_limit_temp + ";\n";
+
+                $$.traducao += "\t\t" + cond_temp + " = " + c_var_name + " != NULL;\n";
+                $$.traducao += "\t\tif (" + cond_temp + ") goto " + L_skip_free + ";\n";
+                $$.traducao += "\t\tfree(" + c_var_name + ");\n";
+                $$.traducao += "\t\t" + L_skip_free + ":\n";
+                
+                $$.traducao += "\t\t" + c_var_name + " = (char*) malloc(" + cap_temp + ");\n";
+                
+                $$.traducao += "\t\t" + L_loop_start + ":\n";
+                $$.traducao += "\t\t\t" + scanf_ret_temp + " = scanf(\"%c\", &" + char_in_temp + ");\n";
+                
+                $$.traducao += "\t\t\t" + cond_temp + " = " + scanf_ret_temp + " != 1;\n";
+                $$.traducao += "\t\t\tif (" + cond_temp + ") goto " + L_fim_loop + ";\n";
+                $$.traducao += "\t\t\t" + cond_temp + " = " + char_in_temp + " == '\\n';\n";
+                $$.traducao += "\t\t\tif (" + cond_temp + ") goto " + L_fim_loop + ";\n";
+                
+                $$.traducao += "\t\t\t" + cap_limit_temp + " = " + cap_temp + " - 1;\n";
+                $$.traducao += "\t\t\t" + cond_temp + " = " + len_temp + " >= " + cap_limit_temp + ";\n";
+                $$.traducao += "\t\t\tif (!" + cond_temp + ") goto " + L_skip_realloc + ";\n";
+                $$.traducao += "\t\t\t\t" + cap_temp + " = " + cap_temp + " * 2;\n";
+                $$.traducao += "\t\t\t\t" + c_var_name + " = (char*) realloc(" + c_var_name + ", " + cap_temp + ");\n";
+                $$.traducao += "\t\t\t" + L_skip_realloc + ":\n";
+                
+                $$.traducao += "\t\t\t" + ptr_dest_temp + " = " + c_var_name + " + " + len_temp + ";\n";
+                $$.traducao += "\t\t\t*" + ptr_dest_temp + " = " + char_in_temp + ";\n";
+                
+                $$.traducao += "\t\t\t" + len_temp + " = " + len_temp + " + 1;\n";
+                $$.traducao += "\t\t\tgoto " + L_loop_start + ";\n";
+    
+                $$.traducao += "\t\t" + L_fim_loop + ":\n";
+                $$.traducao += "\t\t\t" + ptr_dest_temp + " = " + c_var_name + " + " + len_temp + ";\n";
+                $$.traducao += "\t\t\t*" + ptr_dest_temp + " = '\\0';\n";
+                $$.traducao += "\t}\n";
+
+            } else {
+                string format_specifier = "";
+                if (var_tipo == "int" || var_tipo == "boolean") format_specifier = "%d";
+                else if (var_tipo == "float") format_specifier = "%f";
+                else if (var_tipo == "char") format_specifier = " %c"; 
+                else yyerror("Erro: Tipo '" + var_tipo + "' inválido para leitura com 'leia'.");
+                
+                if (!format_specifier.empty()) {
+                    $$.traducao += "\tscanf(\"" + format_specifier + "\", &" + c_var_name + ");\n";
+                }
+            }
+            
+            $$.label = "";
+            $$.tipo = "statement";
+        }
+    }
 	| TK_BREAK ';'
 	{
 		if (pilha_loops.empty()) {

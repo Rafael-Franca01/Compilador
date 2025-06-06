@@ -1,3 +1,5 @@
 int main() {
-	str a = "oi";
-}
+	str a;
+	a = "bugdoviado";
+	receba(a);
+	}
