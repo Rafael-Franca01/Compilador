@@ -23,7 +23,6 @@ ID          {LETRA}({LETRA}|{DIGITO})*
 (\r\n|\n|\r)          { contador_linha++; }  
 
 {DELIM}		{}
-
 "main"		{ return TK_MAIN; }
 "if"		{ return TK_IF; }
 "helcio"	{ return TK_ELSE; }
@@ -65,7 +64,26 @@ ID          {LETRA}({LETRA}|{DIGITO})*
 "=="        { return TK_IGUAL_IGUAL; }
 "!="        { return TK_DIFERENTE; } 
 
-{STRING}    { yylval.label = yytext; yylval.tipo = "string"; return TK_STRING;}
+{STRING} {
+    string raw_string(yytext);
+    // Processa a string para calcular o tamanho real
+    int tamanho_real = 0;
+    for (size_t i = 1; i < raw_string.length() - 1; ++i) {
+        if (raw_string[i] == '\\') {
+            // Se encontrar uma barra invertida, pula o próximo caractere
+            // (ex: '\n' conta como 1 char, não 2).
+            i++; 
+        }
+        tamanho_real++;
+    }
+    
+    // Agora, preenchemos o yylval com a informação completa
+    yylval.label = raw_string; // O label é a string literal com aspas
+    yylval.tipo = "string";
+    yylval.tamanho_string = tamanho_real; // O tamanho exato, calculado aqui!
+    yylval.literal = true;
+    return TK_STRING;
+}
 {CHAR}      { yylval.label = yytext; yylval.tipo = "char"; return TK_CHAR; }
 {FLOAT}		{ yylval.label = yytext; yylval.tipo = "float"; return TK_FLOAT; }
 {NUM}		{ yylval.label = yytext; yylval.tipo = "int"; return TK_NUM; }

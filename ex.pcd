@@ -1,6 +1,6 @@
 int main() {
-	str b;
-	b = "euquerotodosospaus";
-	receba(b);
-	prt(b);
+	str a = "bugdoviado";
+	prt(a);
+	receba(a);
+	prt(a);
 }

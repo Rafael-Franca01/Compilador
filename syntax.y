@@ -19,6 +19,8 @@ struct atributos
 	string label;
 	string traducao;
 	string tipo;
+	int tamanho_string;
+	bool literal = false;
 };
 
 vector<map<string, atributos>> pilha_tabelas_simbolos;
@@ -285,7 +287,7 @@ string contar_string(string ponteiro_destino_c_name, atributos string_origem_rhs
 %token TK_NUM TK_FLOAT TK_TRUE TK_FALSE TK_CHAR TK_STRING
 %token TK_MAIN TK_IF TK_ELSE TK_WHILE TK_FOR TK_DO TK_SWITCH TK_PRINT TK_SCANF TK_BREAK TK_CONTINUE
 %token TK_TIPO_INT TK_TIPO_FLOAT TK_TIPO_CHAR TK_TIPO_BOOL TK_TIPO_STRING TK_ID TK_MAIS_MAIS TK_MENOS_MENOS
-%token TK_FIM TK_ERROR
+%token TK_FIM TK_ERROR 
 
 %start RAIZ
 %right CAST
@@ -589,7 +591,7 @@ COD : DECLARACAO
 		$$.traducao = $1.traducao;
 	}
 	;
-DECLARACAO : TIPO TK_ID 
+DECLARACAO : TIPO TK_ID
 	{
 		string original_name = $2.label;
 		
@@ -606,32 +608,50 @@ DECLARACAO : TIPO TK_ID
 	}
 | TIPO TK_ID '=' E 
 {
-	string original_name = $2.label;
-	string c_code_name = gentempcode(); // Nome C da nova variável
-	string tipo_declarado = $1.tipo;
-	$$.label = c_code_name; 
-	$$.tipo = tipo_declarado;
+    string original_name = $2.label;
+    string c_code_name = gentempcode(); 
+    string tipo_declarado = $1.tipo;
+    $$.label = c_code_name; 
+    $$.tipo = tipo_declarado;
 
-	if (declarar_simbolo(original_name, tipo_declarado, c_code_name)) {
-			declaracoes_temp[c_code_name] = tipo_declarado;
-			mapa_c_para_original[c_code_name] = original_name;
-			if (tipo_declarado == "string" && $4.tipo == "string") {
-					$$.traducao = contar_string(c_code_name, $4);
-		} else {
-			atributos valor_para_atribuir = $4;
-			if (tipo_declarado != valor_para_atribuir.tipo) {
-					if ((tipo_declarado == "float" && valor_para_atribuir.tipo == "int") ||
-							(tipo_declarado == "int" && valor_para_atribuir.tipo == "float")) {
-							valor_para_atribuir = converter_implicitamente(valor_para_atribuir, tipo_declarado);
-					} else {
-							yyerror("Erro Semantico: tipo incompatível na atribuição da declaração de '" + original_name + "'. Esperado '" + tipo_declarado + "', recebido '" + valor_para_atribuir.tipo + "'.");
-					}
-			} 
-			$$.traducao = valor_para_atribuir.traducao; 
-			$$.traducao += "\t" + c_code_name + " = " + valor_para_atribuir.label + ";\n";
-			}
-	}
+    if (declarar_simbolo(original_name, tipo_declarado, c_code_name)) {
+        declaracoes_temp[c_code_name] = tipo_declarado;
+        mapa_c_para_original[c_code_name] = original_name;
+
+        // --- INÍCIO DA LÓGICA ALTERADA ---
+        if (tipo_declarado == "string" && $4.tipo == "string") {
+            atributos rhs = $4; // Atributos do lado direito (Right-Hand Side)
+
+            if (rhs.literal) { // Verifica a flag que indica se é um literal
+                // Otimização: É um literal de string, usa o tamanho pré-calculado do Lexer.
+                int tamanho_necessario = rhs.tamanho_string + 1;
+                // A traducao de um literal deve ser vazia, mas incluímos por segurança.
+                $$.traducao = rhs.traducao; 
+                $$.traducao += "\t" + c_code_name + " = (char*) malloc(" + to_string(tamanho_necessario) + ");\n";
+                $$.traducao += "\tstrcpy(" + c_code_name + ", " + rhs.label + ");\n";
+            } else {
+                // Não é um literal (ex: str a = b;), então o tamanho é desconhecido.
+                // Usa a função auxiliar para copiar a string dinamicamente.
+                $$.traducao = contar_string(c_code_name, rhs);
+            }
+        } else {
+            // Lógica que você já tinha para os outros tipos (int, float, etc.)
+            atributos valor_para_atribuir = $4;
+            if (tipo_declarado != valor_para_atribuir.tipo) {
+                if ((tipo_declarado == "float" && valor_para_atribuir.tipo == "int") ||
+                    (tipo_declarado == "int" && valor_para_atribuir.tipo == "float")) {
+                    valor_para_atribuir = converter_implicitamente(valor_para_atribuir, tipo_declarado);
+                } else {
+                    yyerror("Erro Semantico: tipo incompatível na atribuição da declaração de '" + original_name + "'. Esperado '" + tipo_declarado + "', recebido '" + valor_para_atribuir.tipo + "'.");
+                }
+            } 
+            $$.traducao = valor_para_atribuir.traducao; 
+            $$.traducao += "\t" + c_code_name + " = " + valor_para_atribuir.label + ";\n";
+        }
+        // --- FIM DA LÓGICA ALTERADA ---
+    }
 }
+;
 
 TIPO : TK_TIPO_INT { $$.tipo = "int"; }
 	| TK_TIPO_FLOAT { $$.tipo = "float"; }
@@ -675,42 +695,56 @@ E : E '+' E
 		$$ = $2;
 	}
 	| TK_ID '=' E
-	{
-		atributos* simb_ptr = buscar_simbolo($1.label);
-		if (!simb_ptr) {
-				yyerror("Erro Semantico: variavel '" + $1.label + "' nao declarada.");
-				$$.label = ""; $$.tipo = "error"; $$.traducao = "";
-		} else {
-				atributos simb = *simb_ptr;
-				atributos rhs = $3;
+{
+    atributos* simb_ptr = buscar_simbolo($1.label);
+    if (!simb_ptr) {
+        yyerror("Erro Semantico: variavel '" + $1.label + "' nao declarada.");
+        $$.label = ""; $$.tipo = "error"; $$.traducao = "";
+    } else {
+        atributos simb = *simb_ptr;
+        atributos rhs = $3; // Atributos do lado direito (Right-Hand Side)
 
-				if (simb.tipo == "string" && rhs.tipo == "string") {
-						$$.traducao = contar_string(simb.label, rhs);
-						$$.label = simb.label;
-						$$.tipo = simb.tipo;
-				}
-				else if (simb.tipo == "boolean" && (rhs.tipo == "int" || rhs.tipo == "boolean")) {
-						$$.traducao = rhs.traducao + "\t" + simb.label + " = " + rhs.label + ";\n";
-						$$.label = simb.label;
-						$$.tipo = simb.tipo;
-				}
-				else if ((simb.tipo == "int" && rhs.tipo == "float") || (simb.tipo == "float" && rhs.tipo == "int")) {
-						atributos convertido = converter_implicitamente(rhs, simb.tipo);
-						$$.traducao = convertido.traducao + "\t" + simb.label + " = " + convertido.label + ";\n";
-						$$.label = simb.label;
-						$$.tipo = simb.tipo;
-				}
-				else if (simb.tipo == rhs.tipo) {
-						$$.traducao = rhs.traducao + "\t" + simb.label + " = " + rhs.label + ";\n";
-						$$.label = simb.label;
-						$$.tipo = simb.tipo;
-				}
-				else {
-						yyerror("Erro Semantico: tipos incompatíveis na atribuicao para '" + $1.label + "'. Esperado '" + simb.tipo + "', recebido '" + rhs.tipo + "'.");
-						$$.label = ""; $$.tipo = "error"; $$.traducao = "";
-				}
-			}
+        // --- INÍCIO DA LÓGICA INTELIGENTE E SEM AMBIGUIDADE ---
+        if (simb.tipo == "string" && rhs.tipo == "string") {
+            if (rhs.literal) { // Verifica se o lado direito é um literal
+                // SIM: Otimização para atribuição de literal de string
+                string c_var_name = simb.label;
+                int tamanho_necessario = rhs.tamanho_string + 1;
+                
+                // Libera a memória antiga (se houver) e aloca a nova
+                $$.traducao = "\tfree(" + c_var_name + ");\n"; 
+                $$.traducao += "\t" + c_var_name + " = (char*) malloc(" + to_string(tamanho_necessario) + ");\n";
+                $$.traducao += "\tstrcpy(" + c_var_name + ", " + rhs.label + ");\n";
+                
+                $$.label = c_var_name;
+                $$.tipo = simb.tipo;
+            } else {
+                // NÃO: Atribuição de uma variável string a outra, usa a função auxiliar
+                $$.traducao = contar_string(simb.label, rhs);
+                $$.label = simb.label;
+                $$.tipo = simb.tipo;
+            }
+        }
+        else if ((simb.tipo == "int" && rhs.tipo == "float") || (simb.tipo == "float" && rhs.tipo == "int")) {
+            // Lógica de conversão implícita
+            atributos convertido = converter_implicitamente(rhs, simb.tipo);
+            $$.traducao = convertido.traducao + "\t" + simb.label + " = " + convertido.label + ";\n";
+            $$.label = simb.label;
+            $$.tipo = simb.tipo;
+        }
+        else if (simb.tipo == rhs.tipo || (simb.tipo == "boolean" && (rhs.tipo == "int" || rhs.tipo == "boolean"))) {
+            // Lógica de atribuição direta para tipos compatíveis
+            $$.traducao = rhs.traducao + "\t" + simb.label + " = " + rhs.label + ";\n";
+            $$.label = simb.label;
+            $$.tipo = simb.tipo;
+        }
+        else {
+            // Erro de tipos incompatíveis
+            yyerror("Erro Semantico: tipos incompatíveis na atribuicao para '" + $1.label + "'. Esperado '" + simb.tipo + "', recebido '" + rhs.tipo + "'.");
+            $$.label = ""; $$.tipo = "error"; $$.traducao = "";
+        }
     }
+}
 	| TK_NUM
 	{
 		$$.label = gentempcode();
@@ -740,12 +774,22 @@ E : E '+' E
 		declaracoes_temp[$$.label] = $$.tipo;
 	}
 	| TK_STRING
-	{
-		$$.label = gentempcode();
-		$$.traducao = "\t" + $$.label + " = strcpy(" + $$.label + ", " + $1.label + ");\n";
-		$$.tipo = "string";
-		declaracoes_temp[$$.label] = $$.tipo;
-	}
+    {
+        // $1 representa os atributos do token TK_STRING vindos do lexer
+        // $1.tamanho_string agora contém o comprimento exato da string,
+        // calculado durante a compilação!
+        
+        $$.label = gentempcode();
+        $$.tipo = "string";
+        declaracoes_temp[$$.label] = "string";
+        
+        // Aloca memória com o tamanho exato (+1 para o '\0')
+        int tamanho_necessario = $1.tamanho_string + 1;
+        
+        $$.traducao = "\t" + $$.label + " = (char*) malloc(" + to_string(tamanho_necessario) + ");\n";
+        // Copia a string literal para a memória recém-alocada
+        $$.traducao += "\tstrcpy(" + $$.label + ", " + $1.label + ");\n";
+    } 
 	| TK_FALSE
 	{
 		$$.label = gentempcode();
