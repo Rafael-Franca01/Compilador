@@ -27,13 +27,15 @@ ID          {LETRA}({LETRA}|{DIGITO})*
 "if"		{ return TK_IF; }
 "helcio"	{ return TK_ELSE; }
 "swc"		{ return TK_SWITCH; }
+"cs"        { return TK_CASE; }
+"def"		{ return TK_DEFAULT; }
 "whl"		{ return TK_WHILE; }
 "do"		{ return TK_DO; }
 "for"		{ return TK_FOR; }
-"prt"   { return TK_PRINT; }
-"brk"   { return TK_BREAK; }
-"cnt"   { return TK_CONTINUE; }
-"receba" { return TK_SCANF; }
+"prt"       { return TK_PRINT; }
+"brk"       { return TK_BREAK; }
+"cnt"       { return TK_CONTINUE; }
+"receba"    { return TK_SCANF; }
 
 "int"		{ return TK_TIPO_INT; }
 "flt"		{ return TK_TIPO_FLOAT; }
@@ -50,7 +52,7 @@ ID          {LETRA}({LETRA}|{DIGITO})*
 
 "="			{ return '='; }
 
-[(){}[\];,]	{ return *yytext; }
+[(){}[\];:,]	{ return *yytext; }
 
 [<]         { return *yytext; }
 [>]         { return *yytext; }           

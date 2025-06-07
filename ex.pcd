@@ -1,6 +1,13 @@
 int main() {
-	str a = "bugdoviado";
-	prt(a);
-	receba(a);
-	prt(a);
+	int a = 3;
+	swc(a){
+		cs 1:
+			prt("Cu");
+			brk;
+		cs 2:
+			prt("Buceta");
+			brk;
+		def:
+			prt("Pinto");
+	}
 }
