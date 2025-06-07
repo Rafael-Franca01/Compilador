@@ -11,7 +11,8 @@ using namespace std;
 int goto_label_qnt = 0;
 int var_temp_qnt = 0;
 int contador_linha = 1;
-
+string codigo_funcoes_auxiliares;
+bool funcao_strlen_gerada = false;
 
 struct atributos
 {
@@ -25,6 +26,9 @@ vector<string> ordem_declaracoes;
 map<string, string> declaracoes_temp;
 map<string, string> mapa_c_para_original;
 vector<pair<string, string>> pilha_loops;
+
+void gerar_funcao_strlen_se_necessario();
+string contar_string();
 
 
 static const map<string, string> mapa_tipos_linguagem_para_c = {
@@ -111,14 +115,21 @@ string gerar_codigo_declaracoes(
 	string codigo_local;
 	for (const auto &c_name : p_ordem_declaracoes) {
 			auto it_decl_type = p_declaracoes_temp.find(c_name);
+			auto it_orig_name = p_mapa_c_para_original.find(c_name);
 			if (it_decl_type != p_declaracoes_temp.end()) {
 					const string& tipo_linguagem = it_decl_type->second;
 					string tipo_c_str = ""; 
 
 					// Lógica modificada para declaração de string
 					if (tipo_linguagem == "string") {
+						if(!(it_orig_name != p_mapa_c_para_original.end())){
+							tipo_c_str = "char*";
+							codigo_local += "\t" + tipo_c_str + " " + c_name + ";";
+						}else{
 							tipo_c_str = "char*";
 							codigo_local += "\t" + tipo_c_str + " " + c_name + " = NULL;";
+						}
+						
 					} else {
 							// Lógica para outros tipos permanece a mesma
 							auto it_mapa_tipos = mapa_tipos_linguagem_para_c.find(tipo_linguagem);
@@ -128,7 +139,7 @@ string gerar_codigo_declaracoes(
 							codigo_local += "\t" + tipo_c_str + " " + c_name + ";";
 					}
 
-					auto it_orig_name = p_mapa_c_para_original.find(c_name);
+					
 					if (it_orig_name != p_mapa_c_para_original.end()) {
 							codigo_local += " // " + it_orig_name->second;
 					}
@@ -209,33 +220,58 @@ atributos criar_expressao_unaria(atributos op, string op_str_lexical) {
 	return res;
 }
 
+void gerar_funcao_strlen_se_necessario() {
+    if (funcao_strlen_gerada) return;
+
+    string temp_tamanho = "t" + to_string(++var_temp_qnt);
+    string temp_ponteiro = "t" + to_string(++var_temp_qnt);
+    string temp_char_atual = "t" + to_string(++var_temp_qnt);
+    string temp_condicao = "t" + to_string(++var_temp_qnt);
+    
+    string label_inicio = genlabel();
+    string label_fim = genlabel();
+    
+    codigo_funcoes_auxiliares += "int obter_tamanho_string(char* string_entrada) {\n";
+   
+    codigo_funcoes_auxiliares += "\tint " + temp_tamanho + ";\n";
+    codigo_funcoes_auxiliares += "\tchar* " + temp_ponteiro + ";\n";
+    codigo_funcoes_auxiliares += "\tchar " + temp_char_atual + ";\n";
+    codigo_funcoes_auxiliares += "\tint " + temp_condicao + ";\n\n";
+
+    codigo_funcoes_auxiliares += "\t" + temp_tamanho + " = 0;\n";
+    codigo_funcoes_auxiliares += "\t" + temp_ponteiro + " = string_entrada;\n";
+
+    codigo_funcoes_auxiliares += "\t" + label_inicio + ":\n";
+    codigo_funcoes_auxiliares += "\t\t" + temp_char_atual + " = *" + temp_ponteiro + ";\n";
+    codigo_funcoes_auxiliares += "\t\t" + temp_condicao + " = " + temp_char_atual + " == 0;\n";
+    codigo_funcoes_auxiliares += "\t\tif (" + temp_condicao + ") goto " + label_fim + ";\n";
+    codigo_funcoes_auxiliares += "\t\t" + temp_tamanho + " = " + temp_tamanho + " + 1;\n";
+    codigo_funcoes_auxiliares += "\t\t" + temp_ponteiro + " = " + temp_ponteiro + " + 1;\n";
+    codigo_funcoes_auxiliares += "\t\tgoto " + label_inicio + ";\n";
+    codigo_funcoes_auxiliares += "\t" + label_fim + ":\n";
+    codigo_funcoes_auxiliares += "\treturn " + temp_tamanho + ";\n";
+    codigo_funcoes_auxiliares += "}\n\n";
+
+    funcao_strlen_gerada = true;
+}
 
 string contar_string(string ponteiro_destino_c_name, atributos string_origem_rhs) {
+    gerar_funcao_strlen_se_necessario(); // Garante que a função auxiliar seja criada
+
     string len_temp = gentempcode();
     declaracoes_temp[len_temp] = "int";
-    string ptr_temp = gentempcode();
-    declaracoes_temp[ptr_temp] = "string";
-    string char_temp = gentempcode();
-    declaracoes_temp[char_temp] = "char";
-    string cond_temp = gentempcode();
-    declaracoes_temp[cond_temp] = "boolean";
-    string L_start = genlabel();
-    string L_end = genlabel();
+    
+	string tamanho_total_temp = gentempcode();
+    declaracoes_temp[tamanho_total_temp] = "int";
 
     string codigo_gerado = string_origem_rhs.traducao;
-
-    codigo_gerado += "\t" + len_temp + " = 0;\n";
-    codigo_gerado += "\t" + ptr_temp + " = " + string_origem_rhs.label + ";\n";
-    codigo_gerado += L_start + ":\n";
-    codigo_gerado += "\t" + char_temp + " = *" + ptr_temp + ";\n";
-    codigo_gerado += "\t" + cond_temp + " = " + char_temp + " == 0;\n";
-    codigo_gerado += "\tif (" + cond_temp + ") goto " + L_end + ";\n";
-    codigo_gerado += "\t" + len_temp + " = " + len_temp + " + 1;\n";
-    codigo_gerado += "\t" + ptr_temp + " = " + ptr_temp + " + 1;\n";
-    codigo_gerado += "\tgoto " + L_start + ";\n";
-    codigo_gerado += L_end + ":\n";
-
-    codigo_gerado += "\t" + ponteiro_destino_c_name + " = (char*) malloc(" + len_temp + " + 1);\n";
+    
+    // Gera a chamada para a função auxiliar
+    codigo_gerado += "\t" + len_temp + " = obter_tamanho_string(" + string_origem_rhs.label + ");\n";
+    // Aloca memória com base no resultado
+    codigo_gerado += "\t" + tamanho_total_temp + " = " + len_temp + " + 1;\n";
+	codigo_gerado += "\t" + ponteiro_destino_c_name + " = (char*) malloc(" + tamanho_total_temp + ");\n";
+    // Copia a string
     codigo_gerado += "\tstrcpy(" + ponteiro_destino_c_name + ", " + string_origem_rhs.label + ");\n";
     
     return codigo_gerado;
@@ -271,7 +307,7 @@ RAIZ : SEXO
                       "#include <string.h>\n" 
 											"#include <stdlib.h>\n"
                       "#include <stdio.h>\n\n"; 
-    cout << includes << $1.traducao << endl;
+    cout << includes << codigo_funcoes_auxiliares << $1.traducao << endl;
 	}
 
 SEXO : S SEXO
@@ -319,7 +355,7 @@ COMANDOS : COMANDO COMANDOS
 COMANDO : COD ';' { $$ = $1; }
 	| TK_PRINT '(' E ')' ';'
 	{
-		$$.traducao = $3.traducao + "\tcout << " + $3.label + ";\n";
+		$$.traducao = $3.traducao + "\tstd::cout << " + $3.label + ";\n";
 	}
 	| TK_SCANF '(' TK_ID ')' ';'
     {
@@ -706,7 +742,7 @@ E : E '+' E
 	| TK_STRING
 	{
 		$$.label = gentempcode();
-		$$.traducao = "\t" + $$.label + " = " + $1.label + ";\n";
+		$$.traducao = "\t" + $$.label + " = strcpy(" + $$.label + ", " + $1.label + ");\n";
 		$$.tipo = "string";
 		declaracoes_temp[$$.label] = $$.tipo;
 	}
