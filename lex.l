@@ -36,7 +36,6 @@ ID          {LETRA}({LETRA}|{DIGITO})*
 "brk"       { return TK_BREAK; }
 "cnt"       { return TK_CONTINUE; }
 "receba"    { return TK_SCANF; }
-
 "int"		{ return TK_TIPO_INT; }
 "flt"		{ return TK_TIPO_FLOAT; }
 "boo"	    { return TK_TIPO_BOOL; }

@@ -1,13 +1,12 @@
 int main() {
-	int a = 3;
+	int a = 1;
 	swc(a){
 		cs 1:
 			prt("Cu");
-			brk;
 		cs 2:
 			prt("Buceta");
-			brk;
 		def:
-			prt("Pinto");
+			prt("Pinto" + "piru");
+			brk;
 	}
 }
