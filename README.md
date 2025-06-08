@@ -16,8 +16,8 @@ Este projeto tem como objetivo o desenvolvimento de uma **linguagem de programa�
 - [x] Comandos de entrada e saída
 - [x] Comando `if`, `if/else`
 - [x] Comandos de laço: `while`, `do/while`, `for`
-- [ ] Comando `switch`
-- [ ] Controle de laços: `break`, `continue`
+- [x] Comando `switch`
+- [x] Controle de laços: `break`, `continue`
 
 # 🧱 Etapa Final - Funções e Extras
 - [ ] Suporte à declaração de funções
