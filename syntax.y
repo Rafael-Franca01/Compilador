@@ -101,6 +101,7 @@ COMANDO : COD ';' { $$ = $1; }
             $$.traducao = "";
 
             if (var_tipo == "string") {
+                $3.literal = false; // Força a leitura de string como entrada dinâmica
                 string len_temp = gentempcode();
                 string cap_temp = gentempcode();
                 string char_in_temp = gentempcode();
@@ -118,7 +119,7 @@ COMANDO : COD ';' { $$ = $1; }
 
                 $$.traducao += "\t{\n";
                 $$.traducao += "\t\tint " + len_temp + " = 0;\n";
-                $$.traducao += "\t\tint " + cap_temp + " = 16;\n";
+                $$.traducao += "\t\tint " + cap_temp + " = 32;\n";
                 $$.traducao += "\t\tchar " + char_in_temp + ";\n";
                 $$.traducao += "\t\tint " + scanf_ret_temp + ";\n";
                 $$.traducao += "\t\tchar* " + ptr_dest_temp + ";\n";
@@ -450,26 +451,12 @@ DECLARACAO : TIPO TK_ID
         declaracoes_temp[c_code_name] = tipo_declarado;
         mapa_c_para_original[c_code_name] = original_name;
 
-        if (tipo_declarado == "string" && $4.tipo == "string") {
-            atributos rhs = $4;
-            // --- LÓGICA ATUALIZADA ---
-            if (rhs.literal) {
-                // Caso 1: Atribuição de um literal puro (ex: a = "oi")
-                int tamanho_necessario = rhs.tamanho_string + 1;
-                $$.traducao = "\t" + c_code_name + " = (char*) malloc(" + to_string(tamanho_necessario) + ");\n";
-                $$.traducao += "\tstrcpy(" + c_code_name + ", " + rhs.label + ");\n";
-
-            } else if (rhs.tamanho_string >= 0) { // <-- NOVA VERIFICAÇÃO
-                // Caso 2: Atribuição de uma expressão com tamanho conhecido (ex: a = "oi" + "hello")
-                // A tradução de rhs já contém o código para criar o temporário (t1)
-                $$.traducao = rhs.traducao;
-                int tamanho_necessario = rhs.tamanho_string + 1;
-                $$.traducao += "\t" + c_code_name + " = (char*) malloc(" + to_string(tamanho_necessario) + ");\n";
-                $$.traducao += "\tstrcpy(" + c_code_name + ", " + rhs.label + ");\n";
-            }
-            else {
-                // Caso 3: Atribuição de uma expressão com tamanho desconhecido (ex: a = b + c)
-                $$.traducao = contar_string(c_code_name, rhs);
+        if (tipo_declarado == "string") {
+            if ($4.tipo != "string") {
+                yyerror("Erro Semantico: tipo incompatível na atribuição da declaração de '" + original_name + "'. Esperado 'string', recebido '" + $4.tipo + "'.");
+            } else {
+                $$.traducao = contar_string(c_code_name, $4);
+                atualizar_info_string_simbolo(original_name, $4);
             }
         } else {
             atributos valor_para_atribuir = $4;
@@ -485,8 +472,7 @@ DECLARACAO : TIPO TK_ID
             $$.traducao += "\t" + c_code_name + " = " + valor_para_atribuir.label + ";\n";
         }
     }
-}
-;
+};
 
 TIPO : TK_TIPO_INT { $$.tipo = "int"; }
     | TK_TIPO_FLOAT { $$.tipo = "float"; }
@@ -512,63 +498,76 @@ E : E '+' E                 { $$ = criar_expressao_binaria($1, "+", "+", $3); }
         atributos* simb_ptr = buscar_simbolo($1.label);
         if (!simb_ptr) {
             yyerror("Erro Semantico: variavel '" + $1.label + "' nao declarada.");
-            $$.label = ""; $$.tipo = "error"; $$.traducao = "";
+            $$.tipo = "error";
         } else {
             atributos simb = *simb_ptr;
             atributos rhs = $3;
 
-            if (simb.tipo == "string" && rhs.tipo == "string") {
-                $$.traducao = rhs.traducao;
-                $$.traducao += "\tif (" + simb.label + " != NULL) { free(" + simb.label + "); }\n";
-                
-                if (rhs.literal) {
-                    int tamanho_necessario = rhs.tamanho_string + 1;
-                    $$.traducao += "\t" + simb.label + " = (char*) malloc(" + to_string(tamanho_necessario) + ");\n";
-                    $$.traducao += "\tstrcpy(" + simb.label + ", " + rhs.label + ");\n";
-                } else if (rhs.tamanho_string >= 0) {
-                    int tamanho_necessario = rhs.tamanho_string + 1;
-                    $$.traducao += "\t" + simb.label + " = (char*) malloc(" + to_string(tamanho_necessario) + ");\n";
-                    $$.traducao += "\tstrcpy(" + simb.label + ", " + rhs.label + ");\n";
+            if (simb.tipo == "string") {
+                if (rhs.tipo != "string") {
+                    yyerror("Erro Semantico: tipos incompatíveis na atribuicao para '" + $1.label + "'. Esperado 'string', recebido '" + rhs.tipo + "'.");
+                    $$.tipo = "error";
                 } else {
-                    gerar_funcao_strlen_se_necessario();
-                    string len_temp = gentempcode();
-                    declaracoes_temp[len_temp] = "int";
-                    string total_len_temp = gentempcode();
-                    declaracoes_temp[total_len_temp] = "int";
-                    $$.traducao += "\t" + len_temp + " = obter_tamanho_string(" + rhs.label + ");\n";
-                    $$.traducao += "\t" + total_len_temp + " = " + len_temp + " + 1;\n";
-                    $$.traducao += "\t" + simb.label + " = (char*) malloc(" + total_len_temp + ");\n";
-                    $$.traducao += "\tstrcpy(" + simb.label + ", " + rhs.label + ");\n";
-                }
+                    $$.traducao = rhs.traducao;
 
-                $$.label = simb.label;
-                $$.tipo = simb.tipo;
-            }
-            else if ((simb.tipo == "int" && rhs.tipo == "float") || (simb.tipo == "float" && rhs.tipo == "int")) {
-                atributos convertido = converter_implicitamente(rhs, simb.tipo);
-                $$.traducao = convertido.traducao + "\t" + simb.label + " = " + convertido.label + ";\n";
-                $$.label = simb.label;
-                $$.tipo = simb.tipo;
-            }
-            else if (simb.tipo == rhs.tipo || (simb.tipo == "boolean" && (rhs.tipo == "int" || rhs.tipo == "boolean"))) {
+                  
+                    string temp_cond = gentempcode();
+                    declaracoes_temp[temp_cond] = "int"; 
+                    string label_skip_free = genlabel();
+
+                    $$.traducao += "\t" + temp_cond + " = " + simb.label + " == NULL;\n";
+                    $$.traducao += "\tif (" + temp_cond + ") goto " + label_skip_free + ";\n";
+                    $$.traducao += "\tfree(" + simb.label + ");\n";
+                    $$.traducao += label_skip_free + ":\n";
+                   
+
+                    string codigo_copia = contar_string(simb.label, rhs);
+                    $$.traducao += codigo_copia.substr(rhs.traducao.length());
+                    
+                    $$.label = simb.label;
+                    $$.tipo = simb.tipo;
+                    atualizar_info_string_simbolo($1.label, rhs);
+                }
+            } else {
+                if (simb.tipo != rhs.tipo) {
+                    rhs = converter_implicitamente(rhs, simb.tipo);
+                }
                 $$.traducao = rhs.traducao + "\t" + simb.label + " = " + rhs.label + ";\n";
                 $$.label = simb.label;
                 $$.tipo = simb.tipo;
             }
-            else {
-                yyerror("Erro Semantico: tipos incompatíveis na atribuicao para '" + $1.label + "'. Esperado '" + simb.tipo + "', recebido '" + rhs.tipo + "'.");
-                $$.label = ""; $$.tipo = "error"; $$.traducao = "";
-            }
         }
     }
 
-  | UNARY_E { $$ = $1; }
+  | UNARY_E
+    {
+        $$.label = $1.label;
+        $$.traducao = $1.traducao;
+        $$.tipo = $1.tipo;
+        $$.tamanho_string = $1.tamanho_string;
+        $$.literal = $1.literal;
+        $$.cases = $1.cases;
+        $$.default_label = $1.default_label;
+        $$.label_final_switch = $1.label_final_switch;
+        $$.label_tamanho_runtime = $1.label_tamanho_runtime;
+    }
   ;
 
 UNARY_E : TK_MAIS_MAIS UNARY_E  { $$ = criar_expressao_unaria($2, "+"); } // Pré-incremento e decremento
         | TK_MENOS_MENOS UNARY_E { $$ = criar_expressao_unaria($2, "-"); } 
         | '~' UNARY_E            { $$ = criar_expressao_unaria($2, "~"); }
-        | POSTFIX_E              { $$ = $1; }
+        | POSTFIX_E
+        {
+            $$.label = $1.label;
+            $$.traducao = $1.traducao;
+            $$.tipo = $1.tipo;
+            $$.tamanho_string = $1.tamanho_string;
+            $$.literal = $1.literal;
+            $$.cases = $1.cases;
+            $$.default_label = $1.default_label;
+            $$.label_final_switch = $1.label_final_switch;
+            $$.label_tamanho_runtime = $1.label_tamanho_runtime;
+        }
         ;
 
 POSTFIX_E : POSTFIX_E TK_MAIS_MAIS // precisa desse postfix se nao fica ambiguo
@@ -639,6 +638,9 @@ POSTFIX_E : POSTFIX_E TK_MAIS_MAIS // precisa desse postfix se nao fica ambiguo
                     $$.label = simb_ptr->label;
                     $$.traducao = "";
                     $$.tipo = simb_ptr->tipo;
+                    $$.literal = false;
+                    $$.tamanho_string = simb_ptr->tamanho_string;
+                    $$.label_tamanho_runtime = simb_ptr->label_tamanho_runtime;
                 }
             }
           | TK_NUM
@@ -665,6 +667,8 @@ POSTFIX_E : POSTFIX_E TK_MAIS_MAIS // precisa desse postfix se nao fica ambiguo
           | TK_STRING
             {
                $$ = $1;
+               $$.literal = true;
+               $$.tamanho_string = $1.tamanho_string;
                $$.traducao = "";
             }
           | TK_TRUE

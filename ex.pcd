@@ -1,8 +1,9 @@
 int main() {
-	str a = "piruu";
-	str b = "bostabugada";
-	a = a + b;
-	prt(a);
+	str a;
 	receba(a);
-	prt(a);
+	str b = "Jogos";
+	str c = "bugviado";
+	str d = a + b + c;
+	str e = d;
+	prt(e);
 }

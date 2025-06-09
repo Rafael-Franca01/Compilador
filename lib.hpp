@@ -19,7 +19,8 @@ struct atributos
     string traducao;
     string tipo;
     int tamanho_string;
-    bool literal = false;
+    bool literal;
+    string label_tamanho_runtime;
 
     vector<CaseInfo> cases;
     string default_label;
@@ -53,6 +54,7 @@ string genlabel(){
 }
 
 
+
 atributos converter_implicitamente(atributos op, string tipo_destino) {
     if (op.tipo == tipo_destino) return op;
 
@@ -83,6 +85,13 @@ bool declarar_simbolo(const string& nome_original, const string& tipo_var, const
     atrib.label = label_unico_c;
     atrib.tipo = tipo_var;
     atrib.traducao = "";
+    atrib.literal = false;
+    if (tipo_var == "string") {
+        atrib.tamanho_string = -1; // -1 indica tamanho desconhecido
+    } else {
+        atrib.tamanho_string = 0; // Para outros tipos, não é usado
+    }
+
     escopo_atual[nome_original] = atrib;
     return true;
 }
@@ -98,6 +107,14 @@ atributos* buscar_simbolo(const string& nome_original) {
         }
     }
     return nullptr;
+}
+
+void atualizar_info_string_simbolo(const string& nome_variavel, atributos rhs) {
+     atributos* simb_ptr = buscar_simbolo(nome_variavel);
+    if (simb_ptr) {
+        simb_ptr->tamanho_string = rhs.tamanho_string;
+        simb_ptr->label_tamanho_runtime = rhs.label_tamanho_runtime;
+    }
 }
 
 void entrar_escopo() {
@@ -153,49 +170,62 @@ string gerar_codigo_declaracoes(
 }
 
 atributos gerar_codigo_concatenacao(atributos str1, atributos str2) {
+    gerar_funcao_strlen_se_necessario();
+
     atributos res;
     res.tipo = "string";
-    res.literal = false; // O resultado de uma concatenação nunca é um literal.
+    res.literal = false;
     res.label = gentempcode();
     declaracoes_temp[res.label] = "string";
 
-    // Inclui código prévio, caso um dos operandos seja uma expressão complexa.
-    string codigo = str1.traducao + str2.traducao;
+    string codigo;
+    codigo += str1.traducao;
+    codigo += str2.traducao;
 
-    // --- INÍCIO DA LÓGICA INTELIGENTE ---
-   if (str1.literal && str2.literal) {
-    // CAMINHO OTIMIZADO: Ambos são literais.
-    int tamanho_real = str1.tamanho_string + str2.tamanho_string; // Tamanho sem o '\0'
-    int tamanho_total_alloc = tamanho_real + 1;
+    string len1_str;
+    string len2_str;
 
-    codigo += "\t" + res.label + " = (char*) malloc(" + to_string(tamanho_total_alloc) + ");\n";
-    codigo += "\tstrcpy(" + res.label + ", " + str1.label + ");\n";
-    codigo += "\tstrcat(" + res.label + ", " + str2.label + ");\n";
-
-    // A linha crucial da correção:
-    res.tamanho_string = tamanho_real; // <-- "Lembre" o tamanho conhecido
-
+    if (str1.tamanho_string >= 0) {
+        len1_str = to_string(str1.tamanho_string);
+    } else if (!str1.label_tamanho_runtime.empty()){
+        len1_str = str1.label_tamanho_runtime;
     } else {
-    // CAMINHO PADRÃO
-        res.tamanho_string = -1;
-        // Usa a lógica de contagem em tempo de execução.
-        gerar_funcao_strlen_se_necessario();
-
         string len1_temp = gentempcode();
         declaracoes_temp[len1_temp] = "int";
+        codigo += "\t" + len1_temp + " = obter_tamanho_string(" + str1.label + ");\n";
+        len1_str = len1_temp;
+    }
+
+    if (str2.tamanho_string >= 0) {
+        len2_str = to_string(str2.tamanho_string);
+    } else if (!str2.label_tamanho_runtime.empty()){
+        len2_str = str2.label_tamanho_runtime;
+    } else {
         string len2_temp = gentempcode();
         declaracoes_temp[len2_temp] = "int";
-        string total_len_temp = gentempcode();
-        declaracoes_temp[total_len_temp] = "int";
-
-        codigo += "\t" + len1_temp + " = obter_tamanho_string(" + str1.label + ");\n";
         codigo += "\t" + len2_temp + " = obter_tamanho_string(" + str2.label + ");\n";
-        codigo += "\t" + total_len_temp + " = " + len1_temp + " + " + len2_temp + " + 1;\n";
-        codigo += "\t" + res.label + " = (char*) malloc(" + total_len_temp + ");\n";
-        codigo += "\tstrcpy(" + res.label + ", " + str1.label + ");\n";
-        codigo += "\tstrcat(" + res.label + ", " + str2.label + ");\n";
+        len2_str = len2_temp;
     }
-    // --- FIM DA LÓGICA INTELIGENTE ---
+    
+    string soma_parcial_temp = gentempcode();
+    declaracoes_temp[soma_parcial_temp] = "int";
+    codigo += "\t" + soma_parcial_temp + " = " + len1_str + " + " + len2_str + ";\n";
+
+    if (str1.tamanho_string >= 0 && str2.tamanho_string >= 0) {
+        res.tamanho_string = str1.tamanho_string + str2.tamanho_string;
+        res.label_tamanho_runtime = "";
+    } else {
+        res.tamanho_string = -1;
+        res.label_tamanho_runtime = soma_parcial_temp;
+    }
+
+    string tamanho_total_temp = gentempcode();
+    declaracoes_temp[tamanho_total_temp] = "int";
+    codigo += "\t" + tamanho_total_temp + " = " + soma_parcial_temp + " + 1;\n";
+
+    codigo += "\t" + res.label + " = (char*) malloc(" + tamanho_total_temp + ");\n";
+    codigo += "\tstrcpy(" + res.label + ", " + str1.label + ");\n";
+    codigo += "\tstrcat(" + res.label + ", " + str2.label + ");\n";
 
     res.traducao = codigo;
     return res;
@@ -315,18 +345,24 @@ void gerar_funcao_strlen_se_necessario() {
 }
 
 string contar_string(string ponteiro_destino_c_name, atributos string_origem_rhs) {
-    gerar_funcao_strlen_se_necessario();
+    string codigo_gerado = string_origem_rhs.traducao;
+    string len_var_name;
 
-    string len_temp = gentempcode();
-    declaracoes_temp[len_temp] = "int";
+    if (string_origem_rhs.tamanho_string >= 0) {
+        len_var_name = to_string(string_origem_rhs.tamanho_string);
+    } else if (!string_origem_rhs.label_tamanho_runtime.empty()) {
+        len_var_name = string_origem_rhs.label_tamanho_runtime;
+    } else {
+        gerar_funcao_strlen_se_necessario();
+        string len_temp = gentempcode();
+        declaracoes_temp[len_temp] = "int";
+        codigo_gerado += "\t" + len_temp + " = obter_tamanho_string(" + string_origem_rhs.label + ");\n";
+        len_var_name = len_temp;
+    }
     
     string tamanho_total_temp = gentempcode();
     declaracoes_temp[tamanho_total_temp] = "int";
-
-    string codigo_gerado = string_origem_rhs.traducao;
-    
-    codigo_gerado += "\t" + len_temp + " = obter_tamanho_string(" + string_origem_rhs.label + ");\n";
-    codigo_gerado += "\t" + tamanho_total_temp + " = " + len_temp + " + 1;\n";
+    codigo_gerado += "\t" + tamanho_total_temp + " = " + len_var_name + " + 1;\n";
     codigo_gerado += "\t" + ponteiro_destino_c_name + " = (char*) malloc(" + tamanho_total_temp + ");\n";
     codigo_gerado += "\tstrcpy(" + ponteiro_destino_c_name + ", " + string_origem_rhs.label + ");\n";
     
