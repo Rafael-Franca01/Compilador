@@ -153,40 +153,49 @@ string gerar_codigo_declaracoes(
 }
 
 atributos gerar_codigo_concatenacao(atributos str1, atributos str2) {
-    gerar_funcao_strlen_se_necessario();
-
     atributos res;
     res.tipo = "string";
-    res.literal = false;
-    res.label = gentempcode(); 
+    res.literal = false; // O resultado de uma concatenação nunca é um literal.
+    res.label = gentempcode();
     declaracoes_temp[res.label] = "string";
 
-    
-    string len1_temp = gentempcode();
-    declaracoes_temp[len1_temp] = "int";
-    string len2_temp = gentempcode();
-    declaracoes_temp[len2_temp] = "int";
-    string total_len_temp = gentempcode();
-    declaracoes_temp[total_len_temp] = "int";
+    // Inclui código prévio, caso um dos operandos seja uma expressão complexa.
+    string codigo = str1.traducao + str2.traducao;
 
-    string codigo;
-    
-    codigo += str1.traducao;
-    codigo += str2.traducao;
+    // --- INÍCIO DA LÓGICA INTELIGENTE ---
+   if (str1.literal && str2.literal) {
+    // CAMINHO OTIMIZADO: Ambos são literais.
+    int tamanho_real = str1.tamanho_string + str2.tamanho_string; // Tamanho sem o '\0'
+    int tamanho_total_alloc = tamanho_real + 1;
 
-    
-    codigo += "\t" + len1_temp + " = obter_tamanho_string(" + str1.label + ");\n";
-    codigo += "\t" + len2_temp + " = obter_tamanho_string(" + str2.label + ");\n";
-    
-    
-    codigo += "\t" + total_len_temp + " = " + len1_temp + " + " + len2_temp + " + 1;\n";
-
-    
-    codigo += "\t" + res.label + " = (char*) malloc(" + total_len_temp + ");\n";
-
-    
+    codigo += "\t" + res.label + " = (char*) malloc(" + to_string(tamanho_total_alloc) + ");\n";
     codigo += "\tstrcpy(" + res.label + ", " + str1.label + ");\n";
     codigo += "\tstrcat(" + res.label + ", " + str2.label + ");\n";
+
+    // A linha crucial da correção:
+    res.tamanho_string = tamanho_real; // <-- "Lembre" o tamanho conhecido
+
+    } else {
+    // CAMINHO PADRÃO
+        res.tamanho_string = -1;
+        // Usa a lógica de contagem em tempo de execução.
+        gerar_funcao_strlen_se_necessario();
+
+        string len1_temp = gentempcode();
+        declaracoes_temp[len1_temp] = "int";
+        string len2_temp = gentempcode();
+        declaracoes_temp[len2_temp] = "int";
+        string total_len_temp = gentempcode();
+        declaracoes_temp[total_len_temp] = "int";
+
+        codigo += "\t" + len1_temp + " = obter_tamanho_string(" + str1.label + ");\n";
+        codigo += "\t" + len2_temp + " = obter_tamanho_string(" + str2.label + ");\n";
+        codigo += "\t" + total_len_temp + " = " + len1_temp + " + " + len2_temp + " + 1;\n";
+        codigo += "\t" + res.label + " = (char*) malloc(" + total_len_temp + ");\n";
+        codigo += "\tstrcpy(" + res.label + ", " + str1.label + ");\n";
+        codigo += "\tstrcat(" + res.label + ", " + str2.label + ");\n";
+    }
+    // --- FIM DA LÓGICA INTELIGENTE ---
 
     res.traducao = codigo;
     return res;

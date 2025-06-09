@@ -111,6 +111,11 @@ COMANDO : COD ';' { $$ = $1; }
                 string L_loop_start = genlabel();
                 string L_fim_loop = genlabel();
                 string L_skip_realloc = genlabel();
+                
+                // Variáveis para a verificação do free
+                string free_cond_temp = gentempcode();
+                string L_skip_free = genlabel();
+
                 $$.traducao += "\t{\n";
                 $$.traducao += "\t\tint " + len_temp + " = 0;\n";
                 $$.traducao += "\t\tint " + cap_temp + " = 16;\n";
@@ -118,9 +123,14 @@ COMANDO : COD ';' { $$ = $1; }
                 $$.traducao += "\t\tint " + scanf_ret_temp + ";\n";
                 $$.traducao += "\t\tchar* " + ptr_dest_temp + ";\n";
                 $$.traducao += "\t\tint " + cond_temp + ";\n";
+                $$.traducao += "\t\tint " + free_cond_temp + ";\n"; 
                 $$.traducao += "\t\tint " + cap_limit_temp + ";\n";
 
-                $$.traducao += "\t\tif (" + c_var_name + " != NULL) { free(" + c_var_name + "); }\n";
+                // verifica se a variavel ja foi alocada
+                $$.traducao += "\t\t" + free_cond_temp + " = " + c_var_name + " != NULL;\n";
+                $$.traducao += "\t\tif (!" + free_cond_temp + ") goto " + L_skip_free + ";\n";
+                $$.traducao += "\t\tfree(" + c_var_name + ");\n";
+                $$.traducao += "\t\t" + L_skip_free + ":\n";
                 
                 $$.traducao += "\t\t" + c_var_name + " = (char*) malloc(" + cap_temp + ");\n";
                 
@@ -442,12 +452,23 @@ DECLARACAO : TIPO TK_ID
 
         if (tipo_declarado == "string" && $4.tipo == "string") {
             atributos rhs = $4;
+            // --- LÓGICA ATUALIZADA ---
             if (rhs.literal) {
+                // Caso 1: Atribuição de um literal puro (ex: a = "oi")
                 int tamanho_necessario = rhs.tamanho_string + 1;
-                $$.traducao = rhs.traducao; 
+                $$.traducao = "\t" + c_code_name + " = (char*) malloc(" + to_string(tamanho_necessario) + ");\n";
+                $$.traducao += "\tstrcpy(" + c_code_name + ", " + rhs.label + ");\n";
+
+            } else if (rhs.tamanho_string >= 0) { // <-- NOVA VERIFICAÇÃO
+                // Caso 2: Atribuição de uma expressão com tamanho conhecido (ex: a = "oi" + "hello")
+                // A tradução de rhs já contém o código para criar o temporário (t1)
+                $$.traducao = rhs.traducao;
+                int tamanho_necessario = rhs.tamanho_string + 1;
                 $$.traducao += "\t" + c_code_name + " = (char*) malloc(" + to_string(tamanho_necessario) + ");\n";
                 $$.traducao += "\tstrcpy(" + c_code_name + ", " + rhs.label + ");\n";
-            } else {
+            }
+            else {
+                // Caso 3: Atribuição de uma expressão com tamanho desconhecido (ex: a = b + c)
                 $$.traducao = contar_string(c_code_name, rhs);
             }
         } else {
@@ -495,18 +516,31 @@ E : E '+' E                 { $$ = criar_expressao_binaria($1, "+", "+", $3); }
         } else {
             atributos simb = *simb_ptr;
             atributos rhs = $3;
+
             if (simb.tipo == "string" && rhs.tipo == "string") {
                 $$.traducao = rhs.traducao;
                 $$.traducao += "\tif (" + simb.label + " != NULL) { free(" + simb.label + "); }\n";
-                gerar_funcao_strlen_se_necessario();
-                string len_temp = gentempcode();
-                declaracoes_temp[len_temp] = "int";
-                string total_len_temp = gentempcode();
-                declaracoes_temp[total_len_temp] = "int";
-                $$.traducao += "\t" + len_temp + " = obter_tamanho_string(" + rhs.label + ");\n";
-                $$.traducao += "\t" + total_len_temp + " = " + len_temp + " + 1;\n";
-                $$.traducao += "\t" + simb.label + " = (char*) malloc(" + total_len_temp + ");\n";
-                $$.traducao += "\tstrcpy(" + simb.label + ", " + rhs.label + ");\n";
+                
+                if (rhs.literal) {
+                    int tamanho_necessario = rhs.tamanho_string + 1;
+                    $$.traducao += "\t" + simb.label + " = (char*) malloc(" + to_string(tamanho_necessario) + ");\n";
+                    $$.traducao += "\tstrcpy(" + simb.label + ", " + rhs.label + ");\n";
+                } else if (rhs.tamanho_string >= 0) {
+                    int tamanho_necessario = rhs.tamanho_string + 1;
+                    $$.traducao += "\t" + simb.label + " = (char*) malloc(" + to_string(tamanho_necessario) + ");\n";
+                    $$.traducao += "\tstrcpy(" + simb.label + ", " + rhs.label + ");\n";
+                } else {
+                    gerar_funcao_strlen_se_necessario();
+                    string len_temp = gentempcode();
+                    declaracoes_temp[len_temp] = "int";
+                    string total_len_temp = gentempcode();
+                    declaracoes_temp[total_len_temp] = "int";
+                    $$.traducao += "\t" + len_temp + " = obter_tamanho_string(" + rhs.label + ");\n";
+                    $$.traducao += "\t" + total_len_temp + " = " + len_temp + " + 1;\n";
+                    $$.traducao += "\t" + simb.label + " = (char*) malloc(" + total_len_temp + ");\n";
+                    $$.traducao += "\tstrcpy(" + simb.label + ", " + rhs.label + ");\n";
+                }
+
                 $$.label = simb.label;
                 $$.tipo = simb.tipo;
             }
@@ -527,6 +561,7 @@ E : E '+' E                 { $$ = criar_expressao_binaria($1, "+", "+", $3); }
             }
         }
     }
+
   | UNARY_E { $$ = $1; }
   ;
 
@@ -629,13 +664,8 @@ POSTFIX_E : POSTFIX_E TK_MAIS_MAIS // precisa desse postfix se nao fica ambiguo
             }
           | TK_STRING
             {
-                $$.label = gentempcode();
-                $$.tipo = "string";
-                declaracoes_temp[$$.label] = "string";
-                int tamanho_necessario = $1.tamanho_string + 1;
-                $$.traducao = "\t" + $$.label + " = (char*) malloc(" + to_string(tamanho_necessario) + ");\n";
-                $$.traducao += "\tstrcpy(" + $$.label + ", " + $1.label + ");\n";
-                $$.literal = $1.literal;
+               $$ = $1;
+               $$.traducao = "";
             }
           | TK_TRUE
             {

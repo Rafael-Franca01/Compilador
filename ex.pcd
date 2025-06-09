@@ -1,12 +1,8 @@
 int main() {
-	int a = 1;
-	swc(a){
-		cs 1:
-			prt("Cu");
-		cs 2:
-			prt("Buceta");
-		def:
-			prt("Pinto" + "piru");
-			brk;
-	}
+	str a = "piruu";
+	str b = "bostabugada";
+	a = a + b;
+	prt(a);
+	receba(a);
+	prt(a);
 }
