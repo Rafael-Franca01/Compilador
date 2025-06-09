@@ -1,9 +1,13 @@
 int main() {
-	str a;
-	receba(a);
-	str b = "Jogos";
-	str c = "bugviado";
-	str d = a + b + c;
-	str e = d;
-	prt(e);
+	int a;
+	for(int i = 0; i < 10; i++){
+		for(int j = 0; j < 10; j++){
+			if(i == j){
+				cnt;
+			}
+			prt(i);
+			prt(j);
+			prt(" ");
+		}
+	}
 }

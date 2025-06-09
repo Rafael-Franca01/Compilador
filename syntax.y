@@ -273,30 +273,40 @@ COMANDO : COD ';' { $$ = $1; }
       }
       COD ')' BLOCO 
       { 
+    pair<string, string> current_loop_labels = pilha_loops.back();
+    string label_fim_for = current_loop_labels.first;      // L_FIM
+    string label_continue_for = current_loop_labels.second; // L_CONTINUE
 
-        pair<string, string> current_loop_labels = pilha_loops.back();
-        string label_fim_for = current_loop_labels.first;
-        string label_continue_for = current_loop_labels.second;
+    string label_condicao_for = genlabel(); // L_CONDICAO
 
-        string label_condicao_for = genlabel(); 
+    // Passo 1: Código de Inicialização
+    $$.traducao = $4.traducao;
 
-        $$.traducao = $4.traducao;
+    // Passo 2: Label da Condição
+    $$.traducao += label_condicao_for + ":\n";
 
-        $$.traducao += label_condicao_for + ":\n";
-        $$.traducao += $8.traducao;
-        $$.traducao += "\tif (!" + $8.label + "){\n";
-        $$.traducao += "\t\tgoto " + label_fim_for + ";\n";
-        $$.traducao += "\t}\n";
-        
-        $$.traducao += $10.traducao;
-        $$.traducao += label_continue_for + ":\n";
-        $$.traducao += $9.traducao;
-        $$.traducao += "\tgoto " + label_condicao_for + ";\n"; 
-        $$.traducao += label_fim_for + ":\n";
+    // Passo 3 e 4: Código da Condição e Desvio se Falso
+    $$.traducao += $8.traducao; // $8 contém os atributos da condição E ($6)
+    $$.traducao += "\tif (!" + $8.label + ") goto " + label_fim_for + ";\n";
 
-        pilha_loops.pop_back();
-        sair_escopo();
-      }
+    // Passo 5: Código do Corpo do Loop
+    $$.traducao += $11.traducao; // Adiciona o bloco de comandos
+
+    // Passo 6: Label do Continue
+    $$.traducao += label_continue_for + ":\n";
+
+    // Passo 7: Código do Incremento
+    $$.traducao += $9.traducao;
+
+    // Passo 8: Voltar para o Teste da Condição
+    $$.traducao += "\tgoto " + label_condicao_for + ";\n"; 
+
+    // Passo 9: Label do Fim do Loop
+    $$.traducao += label_fim_for + ":\n";
+
+    pilha_loops.pop_back();
+    sair_escopo();
+}
     | BLOCO
     {
         $$.traducao = $1.traducao;
