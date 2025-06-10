@@ -30,6 +30,7 @@ build: compile
 	$(CPP_COMPILER) -o $(FINAL_EXEC) $(C3A_OUTPUT_FILE)
 	./$(FINAL_EXEC)
 	rm -f y.tab.c y.tab.h lex.yy.c glf $(C3A_OUTPUT_FILE) $(FINAL_EXEC)
-
+	
+	
 clean:
 	rm -f y.tab.c y.tab.h lex.yy.c glf $(C3A_OUTPUT_FILE) $(FINAL_EXEC)

@@ -1,6 +1,6 @@
 int main() {
-	boo a;
-	receba(a);
-
-	prt(a);
+	boo ceta;
+	str float = "";
+	ceta = 30;
+	prt(ceta);
 }
