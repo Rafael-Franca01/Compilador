@@ -163,9 +163,42 @@ COMANDO : COD ';' { $$ = $1; }
 
             } else {
                 string format_specifier = "";
-                if (var_tipo == "int" || var_tipo == "boolean") format_specifier = "%d";
+                if (var_tipo == "int") format_specifier = "%d";
                 else if (var_tipo == "float") format_specifier = "%f";
                 else if (var_tipo == "char") format_specifier = " %c"; 
+                else if (var_tipo == "boolean"){
+                    string temp_int_scanf = gentempcode();  \
+                    
+                    string temp_condicao = gentempcode();  
+                    string label_set_zero = genlabel();
+                    string label_end = genlabel();
+                    
+                    
+                    declaracoes_temp[temp_int_scanf] = "int";
+                    declaracoes_temp[temp_condicao] = "boolean"; 
+
+                    
+                    string codigo_gerado;
+                    
+                    
+                    codigo_gerado += "\tscanf(\"%d\", &" + temp_int_scanf + ");\n";
+                    codigo_gerado += "\t" + temp_condicao + " = " + temp_int_scanf + " == 0;\n";
+                    codigo_gerado += "\tif (" + temp_condicao + ") goto " + label_set_zero + ";\n";
+
+
+                    // Bloco para caso a condição seja falsa (valor lido != 0)
+                    codigo_gerado += "\t" + c_var_name + " = 1;\n";
+                    codigo_gerado += "\tgoto " + label_end + ";\n"; 
+                    
+                    // Bloco para caso a condição seja verdadeira (valor lido == 0)
+                    codigo_gerado += label_set_zero + ":\n";
+                    codigo_gerado += "\t" + c_var_name + " = 0;\n";
+                    
+ 
+                    codigo_gerado += label_end + ":\n";
+
+                    $$.traducao = codigo_gerado;
+                }
                 else yyerror("Erro: Tipo '" + var_tipo + "' inválido para leitura com 'leia'.");
                 
                 if (!format_specifier.empty()) {
