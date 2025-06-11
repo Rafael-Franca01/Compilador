@@ -6,7 +6,7 @@ int var_temp_qnt = 0;
 int contador_linha = 1;
 string codigo_funcoes_auxiliares;
 bool funcao_strlen_gerada = false;
-
+vector<string> strings_a_liberar;
 struct CaseInfo {
     string valor;
     string tipo;

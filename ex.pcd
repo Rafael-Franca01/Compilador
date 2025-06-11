@@ -1,6 +1,9 @@
 int main() {
-	boo a;
-	receba(a);
-
-	prt(a);
+	boo a = false;
+	if(a){
+		str a = "oi";
+		str b;
+		str c;
+		str d;
+	}
 }

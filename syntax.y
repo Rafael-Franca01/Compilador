@@ -63,6 +63,15 @@ S : COMANDO
         codigo += gerar_codigo_declaracoes(ordem_declaracoes, declaracoes_temp, mapa_c_para_original);
         codigo += "\n";
         codigo += $5.traducao;
+
+        // Adicione este bloco para liberar a memória
+        string codigo_liberacao;
+        for (const auto& var_name : strings_a_liberar) {
+            codigo_liberacao += "\tfree(" + var_name + ");\n";
+        }
+        codigo += codigo_liberacao;
+        strings_a_liberar.clear();
+
         codigo += "\treturn 0;\n}\n";
         $$.traducao = codigo;
         ordem_declaracoes.clear();
@@ -480,6 +489,9 @@ DECLARACAO : TIPO TK_ID
         if (declarar_simbolo(original_name, $1.tipo, c_code_name)) {
             declaracoes_temp[c_code_name] = $1.tipo;
             mapa_c_para_original[c_code_name] = original_name;
+            if ($1.tipo == "string") {
+                strings_a_liberar.push_back(c_code_name);
+            }
         }
     }
 | TIPO TK_ID '=' E 
@@ -500,6 +512,7 @@ DECLARACAO : TIPO TK_ID
             } else {
                 $$.traducao = contar_string(c_code_name, $4);
                 atualizar_info_string_simbolo(original_name, $4);
+                strings_a_liberar.push_back(c_code_name);
             }
         } else {
             atributos valor_para_atribuir = $4;
