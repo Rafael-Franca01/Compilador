@@ -62,7 +62,7 @@ S : COMANDO
 
     string codigo;
     codigo += declaracoes_globais;
-    codigo += "\nint main(void)\n{\n";
+    codigo += "\nint main(void)\n\n";
     codigo += codigo_global_executavel;
     
     // Injeta o código executável global (ex: v1 = 1;) no início da main
@@ -70,22 +70,32 @@ S : COMANDO
     // Adiciona o conteúdo do bloco da main
     codigo += $5.traducao; 
     
-    codigo += "}\n";
     
     $$.traducao = codigo;
 }
 
 BLOCO : '{' { entrar_escopo(); } COMANDOS '}'
 {
+    // Passo 1: Gere o código para os comandos e para a limpeza.
+    // Isso garante que TODAS as variáveis temporárias sejam criadas
+    // e registradas na tabela de símbolos do escopo atual.
     string codigo_comandos = $3.traducao;
     string codigo_limpeza = gerar_codigo_limpeza_escopo();
+
+    // Passo 2: AGORA, com a tabela de símbolos completa, gere o bloco
+    // de declarações. Ele irá "enxergar" os temporários da limpeza.
     string declaracoes = gerar_declaracoes_escopo_atual();
     
-    // Retorna apenas o conteúdo, sem as chaves
-    $$.traducao = declaracoes + codigo_comandos + codigo_limpeza;
+    // Passo 3: Monte o código final na ORDEM CORRETA.
+    $$.traducao = "{\n" 
+                  + declaracoes       // Declarações vêm primeiro.
+                  + codigo_comandos   // Depois o corpo do bloco.
+                  + codigo_limpeza    // E por último a limpeza da memória.
+                  + "}\n";
     
+    // Passo 4: Saia do escopo.
     sair_escopo();
-};
+}
 
 COMANDOS : COMANDO COMANDOS
     { $$.traducao = $1.traducao + $2.traducao; }
