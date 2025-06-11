@@ -4,6 +4,7 @@ using namespace std;
 int goto_label_qnt = 0;
 int var_temp_qnt = 0;
 int contador_linha = 1;
+vector<string> strings_a_liberar_no_comando;
 string codigo_funcoes_auxiliares;
 bool funcao_strlen_gerada = false;
 vector<string> strings_a_liberar;
@@ -178,6 +179,7 @@ atributos gerar_codigo_concatenacao(atributos str1, atributos str2) {
     res.label = gentempcode();
     declaracoes_temp[res.label] = "string";
 
+    strings_a_liberar_no_comando.push_back(res.label);
     string codigo;
     codigo += str1.traducao;
     codigo += str2.traducao;

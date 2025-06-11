@@ -93,7 +93,7 @@ COMANDOS : COMANDO COMANDOS
     }
     ;
 
-COMANDO : COD ';' { $$ = $1; }
+COMANDO : COD  FIM_DE_COMANDO  { $$.traducao = $1.traducao + $2.traducao; }
     | TK_PRINT '(' E ')' ';'
     {
         $$.traducao = $3.traducao + "\tstd::cout << " + $3.label + ";\n";
@@ -111,6 +111,7 @@ COMANDO : COD ';' { $$ = $1; }
 
             if (var_tipo == "string") {
                 $3.literal = false; // Força a leitura de string como entrada dinâmica
+                simb_ptr->tamanho_string = -1;
                 string len_temp = gentempcode();
                 string cap_temp = gentempcode();
                 string char_in_temp = gentempcode();
@@ -355,6 +356,16 @@ COMANDO : COD ';' { $$ = $1; }
     }
     | SWITCH_STMT { $$ = $1; }
     ;
+
+FIM_DE_COMANDO
+    : ';'
+    {
+        $$.traducao = "";
+        for (const auto& temp_var : strings_a_liberar_no_comando) {
+            $$.traducao += "\tfree(" + temp_var + ");\n";
+        }
+        strings_a_liberar_no_comando.clear();
+    }
 
 M_DO_SETUP : 
     {
