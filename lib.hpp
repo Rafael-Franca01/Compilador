@@ -26,6 +26,10 @@ struct atributos
     vector<CaseInfo> cases;
     string default_label;
     string label_final_switch;
+    bool eh_vetor;
+    bool eh_endereco; 
+    string nome_original;
+    string tipo_base; 
 };
 
 vector<map<string, atributos>> pilha_tabelas_simbolos;
@@ -45,6 +49,14 @@ static const map<string, string> mapa_tipos_linguagem_para_c = {
         {"boolean", "int"},
         {"string", "char*"}
 };
+
+static const std::map<std::string, int> mapa_tamanhos_tipos = {
+    {"int",     4},
+    {"float",   4},
+    {"char",    1},
+    {"boolean", 4}, 
+    {"string",  8}  
+};
  
 int yylex(void);
 void yyerror(string);
@@ -54,7 +66,20 @@ string genlabel(){
     return "G" + to_string(++goto_label_qnt);
 }
 
+atributos desreferenciar_se_necessario(atributos op) {
+    if (!op.eh_endereco) {
+        return op; 
+    }
+    atributos res;
+    res.tipo = op.tipo;
+    res.label = gentempcode();
+    declaracoes_temp[res.label] = res.tipo;
+    res.traducao = op.traducao + "\t" + res.label + " = *" + op.label + ";\n";
+    res.eh_endereco = false; 
+    res.eh_vetor = false;
 
+    return res;
+}
 
 atributos converter_implicitamente(atributos op, string tipo_destino) {
     if (op.tipo == tipo_destino) return op;
@@ -137,35 +162,44 @@ string gerar_codigo_declaracoes(
 ) { 
     string codigo_local;
     for (const auto &c_name : p_ordem_declaracoes) {
-            auto it_decl_type = p_declaracoes_temp.find(c_name);
-            auto it_orig_name = p_mapa_c_para_original.find(c_name);
-            if (it_decl_type != p_declaracoes_temp.end()) {
-                    const string& tipo_linguagem = it_decl_type->second;
-                    string tipo_c_str = ""; 
+        auto it_decl_type = p_declaracoes_temp.find(c_name);
+        if (it_decl_type != p_declaracoes_temp.end()) {
+            const string& tipo_linguagem = it_decl_type->second;
+            string tipo_c_str = "";
 
-                    if (tipo_linguagem == "string") {
-                        if(!(it_orig_name != p_mapa_c_para_original.end())){
-                            tipo_c_str = "char*";
-                            codigo_local += "\t" + tipo_c_str + " " + c_name + ";";
-                        }else{
-                            tipo_c_str = "char*";
-                            codigo_local += "\t" + tipo_c_str + " " + c_name + " = NULL;";
-                        }
-                        
-                    } else {
-                            auto it_mapa_tipos = mapa_tipos_linguagem_para_c.find(tipo_linguagem);
-                            if (it_mapa_tipos != mapa_tipos_linguagem_para_c.end()) {
-                                    tipo_c_str = it_mapa_tipos->second;
-                            }
-                            codigo_local += "\t" + tipo_c_str + " " + c_name + ";";
-                    }
-
-                    
-                    if (it_orig_name != p_mapa_c_para_original.end()) {
-                            codigo_local += " // " + it_orig_name->second;
-                    }
-                    codigo_local += "\n";
+            // --- LÓGICA CORRIGIDA ---
+            // Se o tipo já contém um '*', ele é um ponteiro e um tipo C válido. Use-o diretamente.
+            if (tipo_linguagem.find('*') != string::npos) {
+                tipo_c_str = tipo_linguagem;
+            } 
+            // A lógica para strings (que também são ponteiros) continua a mesma
+            else if (tipo_linguagem == "string") {
+                tipo_c_str = "char*";
+                // Lógica para inicializar com NULL se for uma variável declarada, não um temporário
+                auto it_orig_name = p_mapa_c_para_original.find(c_name);
+                if (it_orig_name != p_mapa_c_para_original.end()) {
+                    codigo_local += "\t" + tipo_c_str + " " + c_name + " = NULL; // " + it_orig_name->second + "\n";
+                    continue; // Pula para a próxima iteração para não declarar duas vezes
+                }
+            } 
+            // Se não, é um tipo base que precisa ser procurado no mapa
+            else {
+                auto it_mapa_tipos = mapa_tipos_linguagem_para_c.find(tipo_linguagem);
+                if (it_mapa_tipos != mapa_tipos_linguagem_para_c.end()) {
+                    tipo_c_str = it_mapa_tipos->second;
+                }
             }
+
+            // Gera a declaração final
+            if (!tipo_c_str.empty()) {
+                codigo_local += "\t" + tipo_c_str + " " + c_name + ";";
+                auto it_orig_name = p_mapa_c_para_original.find(c_name);
+                if (it_orig_name != p_mapa_c_para_original.end()) {
+                    codigo_local += " // " + it_orig_name->second;
+                }
+                codigo_local += "\n";
+            }
+        }
     }
     return codigo_local;
 }

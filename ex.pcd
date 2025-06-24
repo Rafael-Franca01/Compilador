@@ -1,10 +1,11 @@
 int main() {
 
-	str a = "oi";
-	receba(a);
-	str b = "oii";
-	str c;
-	c = "oiii";
-	prt(a + b + c);
+	int a[0];
+	flt b[0];
+	int i = 0;
+	b[0] = 1;
+	a[0] = 2;	
 	
+	int c = a[i] + b[i];
+	prt(c);
 }

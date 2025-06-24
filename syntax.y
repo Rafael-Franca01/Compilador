@@ -96,7 +96,10 @@ COMANDOS : COMANDO COMANDOS
 COMANDO : COD  FIM_DE_COMANDO  { $$.traducao = $1.traducao + $2.traducao; }
     | TK_PRINT '(' E ')' ';'
     {
-        $$.traducao = $3.traducao + "\tstd::cout << " + $3.label + ";\n";
+    // vetor buga todos os viados agora a gnt n sabe se tamo vendo ponteiro ou valor ent temos q desreferenciar sempre.
+    atributos valor_para_imprimir = desreferenciar_se_necessario($3);
+    $$.traducao = valor_para_imprimir.traducao;
+    $$.traducao += "\tstd::cout << " + valor_para_imprimir.label + ";\n";
     }
     | TK_SCANF '(' TK_ID ')' ';'
     {
@@ -540,6 +543,44 @@ DECLARACAO : TIPO TK_ID
         }
     }
 };
+| TIPO TK_ID '[' E ']'
+    {
+        if ($4.tipo != "int") {
+            yyerror("Erro Semantico: O tamanho de um vetor deve ser um inteiro.");
+            $$ = atributos();
+        } else {
+            string original_name = $2.label;
+            if (buscar_simbolo(original_name)) {
+                 yyerror("Erro Semantico: Variavel '" + original_name + "' ja declarada.");
+                 $$ = atributos();
+            } else {
+                string c_name = gentempcode();
+                string c_type = mapa_tipos_linguagem_para_c.at($1.tipo);
+                int tamanho_do_tipo = mapa_tamanhos_tipos.at($1.tipo);
+                // Adiciona na tabela de símbolos
+                atributos vet_attrs;
+                vet_attrs.label = c_name;
+                vet_attrs.tipo = "vetor";
+                vet_attrs.tipo_base = $1.tipo;
+                vet_attrs.eh_vetor = true;
+                vet_attrs.eh_endereco = false;
+                pilha_tabelas_simbolos.back()[original_name] = vet_attrs;
+                
+                // Gera o código de declaração (ponteiro) e alocação (malloc)
+                string c_type_base = mapa_tipos_linguagem_para_c.at($1.tipo); 
+                // Adiciona um '*' ao tipo base. Para um vetor de strings, "char*" vira "char**".
+                declaracoes_temp[c_name] = c_type_base + "*";
+                mapa_c_para_original[c_name] = original_name;
+
+                $$.traducao = $4.traducao; // Código da expressão do tamanho
+                $$.traducao += "\t" + c_name + " = (" + c_type + "*) malloc(" + $4.label + " * " + std::to_string(tamanho_do_tipo) + ");\n";
+                
+                // Registra para liberar a memória depois
+                strings_a_liberar.push_back(c_name);
+            }
+        }
+    }
+;
 
 TIPO : TK_TIPO_INT { $$.tipo = "int"; }
     | TK_TIPO_FLOAT { $$.tipo = "float"; }
@@ -548,64 +589,67 @@ TIPO : TK_TIPO_INT { $$.tipo = "int"; }
     | TK_TIPO_STRING { $$.tipo = "string"; }
     ;
 
-E : E '+' E                 { $$ = criar_expressao_binaria($1, "+", "+", $3); }
-  | E '-' E                 { $$ = criar_expressao_binaria($1, "-", "-", $3); }
-  | E '*' E                 { $$ = criar_expressao_binaria($1, "*", "*", $3); }
-  | E '/' E                 { $$ = criar_expressao_binaria($1, "/", "/", $3); }
-  | E '<' E                 { $$ = criar_expressao_binaria($1, "<", "<", $3); }
-  | E '>' E                 { $$ = criar_expressao_binaria($1, ">", ">", $3); }
-  | E '&' E                 { $$ = criar_expressao_binaria($1, "&", "&&", $3); }
-  | E '|' E                 { $$ = criar_expressao_binaria($1, "|", "||", $3); }
-  | E TK_MAIOR_IGUAL E      { $$ = criar_expressao_binaria($1, ">=", ">=", $3); }
-  | E TK_MENOR_IGUAL E      { $$ = criar_expressao_binaria($1, "<=", "<=", $3); }
-  | E TK_DIFERENTE E        { $$ = criar_expressao_binaria($1, "!=", "!=", $3); }
-  | E TK_IGUAL_IGUAL E      { $$ = criar_expressao_binaria($1, "==", "==", $3); }
-  | TK_ID '=' E
+E : POSTFIX_E '=' E
     {
-        atributos* simb_ptr = buscar_simbolo($1.label);
-        if (!simb_ptr) {
-            yyerror("Erro Semantico: variavel '" + $1.label + "' nao declarada.");
-            $$.tipo = "error";
-        } else {
-            atributos simb = *simb_ptr;
-            atributos rhs = $3;
+        atributos lhs = $1; // Lado esquerdo (pode ser 'x' ou 'v[i]')
+        atributos rhs = desreferenciar_se_necessario($3); // Lado direito (garante que é um valor)
 
-            if (simb.tipo == "string") {
-                if (rhs.tipo != "string") {
-                    yyerror("Erro Semantico: tipos incompatíveis na atribuicao para '" + $1.label + "'. Esperado 'string', recebido '" + rhs.tipo + "'.");
-                    $$.tipo = "error";
-                } else {
-                    $$.traducao = rhs.traducao;
-
-                  
-                    string temp_cond = gentempcode();
-                    declaracoes_temp[temp_cond] = "int"; 
-                    string label_skip_free = genlabel();
-
-                    $$.traducao += "\t" + temp_cond + " = " + simb.label + " == NULL;\n";
-                    $$.traducao += "\tif (" + temp_cond + ") goto " + label_skip_free + ";\n";
-                    $$.traducao += "\tfree(" + simb.label + ");\n";
-                    $$.traducao += label_skip_free + ":\n";
-                   
-
-                    string codigo_copia = contar_string(simb.label, rhs);
-                    $$.traducao += codigo_copia.substr(rhs.traducao.length());
-                    
-                    $$.label = simb.label;
-                    $$.tipo = simb.tipo;
-                    atualizar_info_string_simbolo($1.label, rhs);
-                }
+        // Lógica de atribuição para strings
+        if (lhs.tipo == "string" && !lhs.eh_endereco) { 
+            if (rhs.tipo != "string") {
+                yyerror("Erro Semantico: tipos incompatíveis na atribuicao para '" + lhs.nome_original + "'. Esperado 'string', recebido '" + rhs.tipo + "'.");
+                $$.tipo = "error";
             } else {
-                if (simb.tipo != rhs.tipo) {
-                    rhs = converter_implicitamente(rhs, simb.tipo);
-                }
-                $$.traducao = rhs.traducao + "\t" + simb.label + " = " + rhs.label + ";\n";
-                $$.label = simb.label;
-                $$.tipo = simb.tipo;
+                $$.traducao = rhs.traducao;
+
+                // Libera a memória da string antiga, se existir
+                string temp_cond = gentempcode();
+                declaracoes_temp[temp_cond] = "int";
+                string label_skip_free = genlabel();
+                $$.traducao += "\t" + temp_cond + " = " + lhs.label + " == NULL;\n";
+                $$.traducao += "\tif (" + temp_cond + ") goto " + label_skip_free + ";\n";
+                $$.traducao += "\tfree(" + lhs.label + ");\n";
+                $$.traducao += label_skip_free + ":\n";
+
+                // Gera código para copiar a nova string
+                string codigo_copia = contar_string(lhs.label, rhs);
+                $$.traducao += codigo_copia;
+                
+                $$.label = lhs.label;
+                $$.tipo = lhs.tipo;
+                atualizar_info_string_simbolo(lhs.nome_original, rhs);
             }
+        } 
+        // Lógica de atribuição para outros tipos (escalares e elementos de vetor)
+        else {
+            if (lhs.tipo != rhs.tipo) {
+                rhs = converter_implicitamente(rhs, lhs.tipo);
+            }
+            $$.traducao = lhs.traducao + rhs.traducao;
+
+            if (lhs.eh_endereco) {
+                // Atribuição a elemento de vetor (ex: v[i] = 10)
+                $$.traducao += "\t*" + lhs.label + " = " + rhs.label + ";\n";
+            } else {
+                // Atribuição a escalar (ex: x = 10)
+                $$.traducao += "\t" + lhs.label + " = " + rhs.label + ";\n";
+            }
+            $$.label = lhs.label;
+            $$.tipo = lhs.tipo;
         }
     }
-
+  | E '+' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "+", "+", desreferenciar_se_necessario($3)); }
+  | E '-' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "-", "-", desreferenciar_se_necessario($3)); }
+  | E '*' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "*", "*", desreferenciar_se_necessario($3)); }
+  | E '/' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "/", "/", desreferenciar_se_necessario($3)); }
+  | E '<' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "<", "<", desreferenciar_se_necessario($3)); }
+  | E '>' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), ">", ">", desreferenciar_se_necessario($3)); }
+  | E '&' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "&", "&&", desreferenciar_se_necessario($3)); }
+  | E '|' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "|", "||", desreferenciar_se_necessario($3)); }
+  | E TK_MAIOR_IGUAL E   { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), ">=", ">=", desreferenciar_se_necessario($3)); }
+  | E TK_MENOR_IGUAL E   { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "<=", "<=", desreferenciar_se_necessario($3)); }
+  | E TK_DIFERENTE E     { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "!=", "!=", desreferenciar_se_necessario($3)); }
+  | E TK_IGUAL_IGUAL E   { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "==", "==", desreferenciar_se_necessario($3)); }
   | UNARY_E
     {
         $$.label = $1.label;
@@ -617,6 +661,10 @@ E : E '+' E                 { $$ = criar_expressao_binaria($1, "+", "+", $3); }
         $$.default_label = $1.default_label;
         $$.label_final_switch = $1.label_final_switch;
         $$.label_tamanho_runtime = $1.label_tamanho_runtime;
+        $$.eh_vetor = $1.eh_vetor;
+        $$.eh_endereco = $1.eh_endereco;
+        $$.tipo_base = $1.tipo_base;
+        $$.nome_original = $1.nome_original;
     }
   ;
 
@@ -709,7 +757,46 @@ POSTFIX_E : POSTFIX_E TK_MAIS_MAIS // precisa desse postfix se nao fica ambiguo
                     $$.tamanho_string = simb_ptr->tamanho_string;
                     $$.label_tamanho_runtime = simb_ptr->label_tamanho_runtime;
                 }
+                $$.nome_original = $1.label; 
             }
+          | POSTFIX_E '[' E ']'
+            {
+                atributos* var = buscar_simbolo($1.nome_original);
+                
+                if (!var || !var->eh_vetor) {
+                    yyerror("Erro Semantico: Variavel '" + $1.nome_original + "' nao e um vetor ou nao foi declarada.");
+                    $$ = atributos();
+                } else if ($3.tipo != "int") {
+                    yyerror("Erro Semantico: Indice do vetor deve ser um inteiro.");
+                    $$ = atributos();
+                } else {
+                    $$ = desreferenciar_se_necessario($3); 
+                    
+                    string addr_temp = gentempcode(); // ex: t4
+
+                    // --- LÓGICA CORRIGIDA AQUI ---
+                    // 1. Pega o tipo C do elemento base (para 'string', o mapa retorna 'char*')
+                    string c_element_type = mapa_tipos_linguagem_para_c.at(var->tipo_base);
+                    
+                    // 2. O tipo do ponteiro que aponta para o elemento é o tipo do elemento + '*'
+                    //    Para um vetor de int (int*), fica "int*".
+                    //    Para um vetor de string (char**), fica "char**".
+                    string pointer_to_element_type = c_element_type + "*";
+
+                    declaracoes_temp[addr_temp] = pointer_to_element_type; // Salva o tipo correto (ex: "char**")
+
+                    $$.traducao += "\t" + addr_temp + " = " + var->label + " + " + $$.label + ";\n";
+                    
+                    // O resultado da expressão é um endereço. O 'label' guarda o endereço (t4),
+                    // e o 'tipo' guarda o tipo do elemento que está lá ("string").
+                    $$.label = addr_temp;
+                    $$.tipo = var->tipo_base;
+                    $$.eh_endereco = true;
+                    $$.eh_vetor = false;
+                    $$.nome_original = $1.nome_original;
+                }
+            }
+        ;
           | TK_NUM
             {
                 $$.label = gentempcode();
