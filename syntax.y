@@ -60,20 +60,19 @@ S : COMANDO
     {
         string codigo;
         codigo += "int main(void) {\n";
+ 
+        string codigo_final_de_liberacao = gerar_codigo_de_liberacao();
+
         codigo += gerar_codigo_declaracoes(ordem_declaracoes, declaracoes_temp, mapa_c_para_original);
         codigo += "\n";
+
         codigo += $5.traducao;
 
-        // Adicione este bloco para liberar a memória
-        string codigo_liberacao;
-        for (const auto& var_name : strings_a_liberar) {
-            codigo_liberacao += "\tfree(" + var_name + ");\n";
-        }
-        codigo += codigo_liberacao;
-        strings_a_liberar.clear();
-
+        codigo += codigo_final_de_liberacao;
+        
         codigo += "\treturn 0;\n}\n";
         $$.traducao = codigo;
+
         ordem_declaracoes.clear();
         declaracoes_temp.clear();
     }
@@ -199,11 +198,11 @@ COMANDO : COD  FIM_DE_COMANDO  { $$.traducao = $1.traducao + $2.traducao; }
                     codigo_gerado += "\tif (" + temp_condicao + ") goto " + label_set_zero + ";\n";
 
 
-                    // Bloco para caso a condição seja falsa (valor lido != 0)
+                    
                     codigo_gerado += "\t" + c_var_name + " = 1;\n";
                     codigo_gerado += "\tgoto " + label_end + ";\n"; 
                     
-                    // Bloco para caso a condição seja verdadeira (valor lido == 0)
+                    
                     codigo_gerado += label_set_zero + ":\n";
                     codigo_gerado += "\t" + c_var_name + " = 0;\n";
                     
@@ -319,39 +318,39 @@ COMANDO : COD  FIM_DE_COMANDO  { $$.traducao = $1.traducao + $2.traducao; }
       }
       COD ')' BLOCO 
       { 
-    pair<string, string> current_loop_labels = pilha_loops.back();
-    string label_fim_for = current_loop_labels.first;      // L_FIM
-    string label_continue_for = current_loop_labels.second; // L_CONTINUE
+        pair<string, string> current_loop_labels = pilha_loops.back();
+        string label_fim_for = current_loop_labels.first;      // L_FIM
+        string label_continue_for = current_loop_labels.second; // L_CONTINUE
 
-    string label_condicao_for = genlabel(); // L_CONDICAO
+        string label_condicao_for = genlabel(); // L_CONDICAO
 
-    // Passo 1: Código de Inicialização
-    $$.traducao = $4.traducao;
+        // Passo 1: Código de Inicialização
+        $$.traducao = $4.traducao;
 
-    // Passo 2: Label da Condição
-    $$.traducao += label_condicao_for + ":\n";
+        // Passo 2: Label da Condição
+        $$.traducao += label_condicao_for + ":\n";
 
-    // Passo 3 e 4: Código da Condição e Desvio se Falso
-    $$.traducao += $8.traducao; // $8 contém os atributos da condição E ($6)
-    $$.traducao += "\tif (!" + $8.label + ") goto " + label_fim_for + ";\n";
+        // Passo 3 e 4: Código da Condição e Desvio se Falso
+        $$.traducao += $8.traducao; // $8 contém os atributos da condição E ($6)
+        $$.traducao += "\tif (!" + $8.label + ") goto " + label_fim_for + ";\n";
 
-    // Passo 5: Código do Corpo do Loop
-    $$.traducao += $11.traducao; // Adiciona o bloco de comandos
+        // Passo 5: Código do Corpo do Loop
+        $$.traducao += $11.traducao; // Adiciona o bloco de comandos
 
-    // Passo 6: Label do Continue
-    $$.traducao += label_continue_for + ":\n";
+        // Passo 6: Label do Continue
+        $$.traducao += label_continue_for + ":\n";
 
-    // Passo 7: Código do Incremento
-    $$.traducao += $9.traducao;
+        // Passo 7: Código do Incremento
+        $$.traducao += $9.traducao;
 
-    // Passo 8: Voltar para o Teste da Condição
-    $$.traducao += "\tgoto " + label_condicao_for + ";\n"; 
+        // Passo 8: Voltar para o Teste da Condição
+        $$.traducao += "\tgoto " + label_condicao_for + ";\n"; 
 
-    // Passo 9: Label do Fim do Loop
-    $$.traducao += label_fim_for + ":\n";
+        // Passo 9: Label do Fim do Loop
+        $$.traducao += label_fim_for + ":\n";
 
-    pilha_loops.pop_back();
-    sair_escopo();
+        pilha_loops.pop_back();
+        sair_escopo();
 }
     | BLOCO
     {
@@ -509,40 +508,106 @@ DECLARACAO : TIPO TK_ID
         }
     }
 | TIPO TK_ID '=' E 
-{
-    string original_name = $2.label;
-    string c_code_name = gentempcode(); 
-    string tipo_declarado = $1.tipo;
-    $$.label = c_code_name; 
-    $$.tipo = tipo_declarado;
+    {
+        string original_name = $2.label;
+        string c_code_name = gentempcode(); 
+        string tipo_declarado = $1.tipo;
+        $$.label = c_code_name; 
+        $$.tipo = tipo_declarado;
 
-    if (declarar_simbolo(original_name, tipo_declarado, c_code_name)) {
-        declaracoes_temp[c_code_name] = tipo_declarado;
-        mapa_c_para_original[c_code_name] = original_name;
+        if (declarar_simbolo(original_name, tipo_declarado, c_code_name)) {
+            declaracoes_temp[c_code_name] = tipo_declarado;
+            mapa_c_para_original[c_code_name] = original_name;
 
-        if (tipo_declarado == "string") {
-            if ($4.tipo != "string") {
-                yyerror("Erro Semantico: tipo incompatível na atribuição da declaração de '" + original_name + "'. Esperado 'string', recebido '" + $4.tipo + "'.");
-            } else {
-                $$.traducao = contar_string(c_code_name, $4);
-                atualizar_info_string_simbolo(original_name, $4);
-                strings_a_liberar.push_back(c_code_name);
-            }
-        } else {
-            atributos valor_para_atribuir = $4;
-            if (tipo_declarado != valor_para_atribuir.tipo) {
-                if ((tipo_declarado == "float" && valor_para_atribuir.tipo == "int") ||
-                    (tipo_declarado == "int" && valor_para_atribuir.tipo == "float")) {
-                    valor_para_atribuir = converter_implicitamente(valor_para_atribuir, tipo_declarado);
+            if (tipo_declarado == "string") {
+                if ($4.tipo != "string") {
+                    yyerror("Erro Semantico: tipo incompatível na atribuição da declaração de '" + original_name + "'. Esperado 'string', recebido '" + $4.tipo + "'.");
                 } else {
-                    yyerror("Erro Semantico: tipo incompatível na atribuição da declaração de '" + original_name + "'. Esperado '" + tipo_declarado + "', recebido '" + valor_para_atribuir.tipo + "'.");
+                    $$.traducao = contar_string(c_code_name, $4);
+                    atualizar_info_string_simbolo(original_name, $4);
+                    strings_a_liberar.push_back(c_code_name);
                 }
-            } 
-            $$.traducao = valor_para_atribuir.traducao; 
-            $$.traducao += "\t" + c_code_name + " = " + valor_para_atribuir.label + ";\n";
+            } else {
+                atributos valor_para_atribuir = $4;
+                if (tipo_declarado != valor_para_atribuir.tipo) {
+                    if ((tipo_declarado == "float" && valor_para_atribuir.tipo == "int") ||
+                        (tipo_declarado == "int" && valor_para_atribuir.tipo == "float")) {
+                        valor_para_atribuir = converter_implicitamente(valor_para_atribuir, tipo_declarado);
+                    } else {
+                        yyerror("Erro Semantico: tipo incompatível na atribuição da declaração de '" + original_name + "'. Esperado '" + tipo_declarado + "', recebido '" + valor_para_atribuir.tipo + "'.");
+                    }
+                } 
+                $$.traducao = valor_para_atribuir.traducao; 
+                $$.traducao += "\t" + c_code_name + " = " + valor_para_atribuir.label + ";\n";
+            }
         }
-    }
-};
+    };
+| TIPO TK_ID '[' E ']' '[' E ']'
+    {
+        if ($4.tipo != "int" || $7.tipo != "int") {
+            yyerror("Erro Semantico: As dimensoes de uma matriz devem ser inteiras.");
+            $$ = atributos();
+        } else {
+            string original_name = $2.label;
+            if (buscar_simbolo(original_name)) {
+                yyerror("Erro Semantico: Variavel '" + original_name + "' ja declarada.");
+                $$ = atributos();
+            } else {
+                
+                // --- AJUSTE PARA MATRIZ DE STRING AQUI ---
+                string c_type_base;
+                if ($1.tipo == "string") {
+                    // Para uma matriz de strings, o tipo C fundamental é 'char'.
+                    c_type_base = "char";
+                } else {
+                    // Para outros tipos (int, flt), usamos o mapa como antes.
+                    c_type_base = mapa_tipos_linguagem_para_c.at($1.tipo);
+                }
+
+                // 1. Nomes e Atributos para a Tabela de Símbolos
+                string c_name = gentempcode();
+                atributos mat_attrs;
+                mat_attrs.label = c_name;
+                mat_attrs.tipo = "matriz";
+                mat_attrs.tipo_base = ($1.tipo == "string") ? "char" : $1.tipo; // O tipo base dos elementos
+                mat_attrs.eh_vetor = true; 
+                pilha_tabelas_simbolos.back()[original_name] = mat_attrs;
+                
+                // O resto do código permanece EXATAMENTE O MESMO!
+                // Ele usará a variável 'c_type_base' que definimos acima.
+
+                string temp_loop_var = gentempcode();
+                string temp_condicao = gentempcode();
+                string label_inicio_loop = genlabel();
+                string label_fim_loop = genlabel();
+                string temp_addr_ptr = gentempcode();
+                string temp_malloc_result = gentempcode();
+
+                declaracoes_temp[c_name] = c_type_base + "**";
+                mapa_c_para_original[c_name] = original_name;
+                declaracoes_temp[temp_loop_var] = "int";
+                declaracoes_temp[temp_condicao] = "boolean";
+                declaracoes_temp[temp_addr_ptr] = c_type_base + "**";
+                declaracoes_temp[temp_malloc_result] = c_type_base + "*";
+
+                $$.traducao = $4.traducao + $7.traducao; 
+                $$.traducao += "\t" + c_name + " = (" + c_type_base + "**) malloc(" + $4.label + " * sizeof(" + c_type_base + "*));\n";
+
+                $$.traducao += "\t" + temp_loop_var + " = 0;\n";
+                $$.traducao += label_inicio_loop + ":\n";
+                $$.traducao += "\t\t" + temp_condicao + " = " + temp_loop_var + " < " + $4.label + ";\n";
+                $$.traducao += "\t\tif (!" + temp_condicao + ") goto " + label_fim_loop + ";\n";
+                $$.traducao += "\t\t" + temp_addr_ptr + " = " + c_name + " + " + temp_loop_var + ";\n";
+                $$.traducao += "\t\t" + temp_malloc_result + " = (" + c_type_base + "*) malloc(" + $7.label + " * sizeof(" + c_type_base + "));\n";
+                $$.traducao += "\t\t*" + temp_addr_ptr + " = " + temp_malloc_result + ";\n";
+                $$.traducao += "\t\t" + temp_loop_var + " = " + temp_loop_var + " + 1;\n";
+                $$.traducao += "\t\tgoto " + label_inicio_loop + ";\n";
+                $$.traducao += label_fim_loop + ":\n";
+
+                matrizes_a_liberar.push_back(make_pair(c_name, $4.label));
+            }
+        }
+    };
 | TIPO TK_ID '[' E ']'
     {
         if ($4.tipo != "int") {
@@ -573,7 +638,7 @@ DECLARACAO : TIPO TK_ID
                 mapa_c_para_original[c_name] = original_name;
 
                 $$.traducao = $4.traducao; // Código da expressão do tamanho
-                $$.traducao += "\t" + c_name + " = (" + c_type + "*) malloc(" + $4.label + " * " + std::to_string(tamanho_do_tipo) + ");\n";
+                $$.traducao += "\t" + c_name + " = (" + c_type + "*) malloc(" + $4.label + " * " + "sizeof(" + c_type + ")" + ");\n";
                 
                 // Registra para liberar a memória depois
                 strings_a_liberar.push_back(c_name);
@@ -591,18 +656,36 @@ TIPO : TK_TIPO_INT { $$.tipo = "int"; }
 
 E : POSTFIX_E '=' E
     {
-        atributos lhs = $1; // Lado esquerdo (pode ser 'x' ou 'v[i]')
-        atributos rhs = desreferenciar_se_necessario($3); // Lado direito (garante que é um valor)
+        atributos lhs = $1;
+        atributos rhs = $3; // Para strings, não desreferenciamos ainda
 
-        // Lógica de atribuição para strings
-        if (lhs.tipo == "string" && !lhs.eh_endereco) { 
+        // --- NOVO BLOCO PARA ATRIBUIÇÃO DE STRING A VETOR DE CHAR ---
+        // Este é o caso a[0] = "Pedro";
+        // O tipo de 'lhs' (a[0]) será 'vetor' e seu tipo base será 'char'
+        if (lhs.tipo == "vetor" && lhs.tipo_base == "char" && rhs.tipo == "string") {
+            
+            // 1. Pega o ponteiro de destino (o char* que é a[0])
+            string dest_ptr = gentempcode();
+            declaracoes_temp[dest_ptr] = "char*"; // O ponteiro da linha é char*
+            
+            $$.traducao = lhs.traducao + rhs.traducao; // Junta códigos anteriores
+            $$.traducao += "\t" + dest_ptr + " = *" + lhs.label + ";\n";
+
+            // 2. Gera a chamada para strcpy
+            $$.traducao += "\tstrcpy(" + dest_ptr + ", " + rhs.label + ");\n";
+            
+            $$.label = dest_ptr;
+            $$.tipo = "string"; // O resultado da expressão é a própria string
+        }
+        
+        // --- LÓGICA EXISTENTE ---
+        else if (lhs.tipo == "string" && !lhs.eh_endereco) { // caso: str s; s = "pedro";
+            rhs = desreferenciar_se_necessario(rhs);
             if (rhs.tipo != "string") {
-                yyerror("Erro Semantico: tipos incompatíveis na atribuicao para '" + lhs.nome_original + "'. Esperado 'string', recebido '" + rhs.tipo + "'.");
+                yyerror("Erro Semantico: tipos incompatíveis para atribuir a string '" + lhs.nome_original + "'.");
                 $$.tipo = "error";
             } else {
                 $$.traducao = rhs.traducao;
-
-                // Libera a memória da string antiga, se existir
                 string temp_cond = gentempcode();
                 declaracoes_temp[temp_cond] = "int";
                 string label_skip_free = genlabel();
@@ -610,28 +693,23 @@ E : POSTFIX_E '=' E
                 $$.traducao += "\tif (" + temp_cond + ") goto " + label_skip_free + ";\n";
                 $$.traducao += "\tfree(" + lhs.label + ");\n";
                 $$.traducao += label_skip_free + ":\n";
-
-                // Gera código para copiar a nova string
                 string codigo_copia = contar_string(lhs.label, rhs);
                 $$.traducao += codigo_copia;
-                
                 $$.label = lhs.label;
                 $$.tipo = lhs.tipo;
                 atualizar_info_string_simbolo(lhs.nome_original, rhs);
             }
         } 
-        // Lógica de atribuição para outros tipos (escalares e elementos de vetor)
-        else {
+        else { // Lógica para outros tipos (int, float, a[i][j], etc.)
+            rhs = desreferenciar_se_necessario(rhs);
             if (lhs.tipo != rhs.tipo) {
                 rhs = converter_implicitamente(rhs, lhs.tipo);
             }
             $$.traducao = lhs.traducao + rhs.traducao;
 
             if (lhs.eh_endereco) {
-                // Atribuição a elemento de vetor (ex: v[i] = 10)
                 $$.traducao += "\t*" + lhs.label + " = " + rhs.label + ";\n";
             } else {
-                // Atribuição a escalar (ex: x = 10)
                 $$.traducao += "\t" + lhs.label + " = " + rhs.label + ";\n";
             }
             $$.label = lhs.label;
@@ -742,61 +820,71 @@ POSTFIX_E : POSTFIX_E TK_MAIS_MAIS // precisa desse postfix se nao fica ambiguo
                 }
             }
           | TK_ID
-            {
+             {
                 atributos* simb_ptr = buscar_simbolo($1.label);
                 if (!simb_ptr) {
                     yyerror("Erro Semantico: variavel '" + $1.label + "' nao declarada.");
-                    $$.label = $1.label;
-                    $$.traducao = "";
                     $$.tipo = "error";
                 } else {
-                    $$.label = simb_ptr->label;
-                    $$.traducao = "";
-                    $$.tipo = simb_ptr->tipo;
-                    $$.literal = false;
-                    $$.tamanho_string = simb_ptr->tamanho_string;
-                    $$.label_tamanho_runtime = simb_ptr->label_tamanho_runtime;
+                    $$ = *simb_ptr; 
                 }
-                $$.nome_original = $1.label; 
+                
+                $$.nome_original = $1.label;
             }
           | POSTFIX_E '[' E ']'
             {
-                atributos* var = buscar_simbolo($1.nome_original);
-                
-                if (!var || !var->eh_vetor) {
-                    yyerror("Erro Semantico: Variavel '" + $1.nome_original + "' nao e um vetor ou nao foi declarada.");
+                atributos base = $1;
+                atributos indice = desreferenciar_se_necessario($3);
+
+                if (base.tipo != "vetor" && base.tipo != "matriz") {
+                    yyerror("Erro Semantico: Variavel '" + base.nome_original + "' nao e um vetor ou matriz.");
                     $$ = atributos();
-                } else if ($3.tipo != "int") {
-                    yyerror("Erro Semantico: Indice do vetor deve ser um inteiro.");
+                } else if (indice.tipo != "int") {
+                    yyerror("Erro Semantico: Indice de vetor ou matriz deve ser um inteiro.");
                     $$ = atributos();
                 } else {
-                    $$ = desreferenciar_se_necessario($3); 
+                    string base_ptr_label;
+                    string base_ptr_c_type;
                     
-                    string addr_temp = gentempcode(); // ex: t4
+                    $$.traducao = base.traducao + indice.traducao;
 
-                    // --- LÓGICA CORRIGIDA AQUI ---
-                    // 1. Pega o tipo C do elemento base (para 'string', o mapa retorna 'char*')
-                    string c_element_type = mapa_tipos_linguagem_para_c.at(var->tipo_base);
-                    
-                    // 2. O tipo do ponteiro que aponta para o elemento é o tipo do elemento + '*'
-                    //    Para um vetor de int (int*), fica "int*".
-                    //    Para um vetor de string (char**), fica "char**".
-                    string pointer_to_element_type = c_element_type + "*";
+                    if (base.eh_endereco) {
+                        base_ptr_label = gentempcode(); 
 
-                    declaracoes_temp[addr_temp] = pointer_to_element_type; // Salva o tipo correto (ex: "char**")
+                        string c_type_da_linha = mapa_tipos_linguagem_para_c.at(base.tipo_base) + "*";
+                        declaracoes_temp[base_ptr_label] = c_type_da_linha; 
+                        
+                        $$.traducao += "\t" + base_ptr_label + " = *" + base.label + ";\n";
+                        base_ptr_c_type = c_type_da_linha;
+                    } else {
+                        base_ptr_label = base.label;
+                        base_ptr_c_type = declaracoes_temp.at(base.label);
+                    }
 
-                    $$.traducao += "\t" + addr_temp + " = " + var->label + " + " + $$.label + ";\n";
-                    
-                    // O resultado da expressão é um endereço. O 'label' guarda o endereço (t4),
-                    // e o 'tipo' guarda o tipo do elemento que está lá ("string").
+                    string addr_temp = gentempcode();
+                    declaracoes_temp[addr_temp] = base_ptr_c_type;
+                    $$.traducao += "\t" + addr_temp + " = " + base_ptr_label + " + " + indice.label + ";\n";
+
                     $$.label = addr_temp;
-                    $$.tipo = var->tipo_base;
                     $$.eh_endereco = true;
-                    $$.eh_vetor = false;
-                    $$.nome_original = $1.nome_original;
+                    $$.nome_original = base.nome_original;
+
+                    atributos* simb_original = buscar_simbolo(base.nome_original);
+                    if(simb_original) {
+                        if (base.tipo == "matriz") {
+                            $$.tipo = "vetor"; 
+                            $$.eh_vetor = true;
+                            $$.tipo_base = simb_original->tipo_base;
+                        } else if (base.tipo == "vetor") {
+                            $$.tipo = simb_original->tipo_base;
+                            $$.eh_vetor = false;
+                            $$.tipo_base = "";
+                        }
+                    } else {
+                        $$.tipo = "error";
+                    }
                 }
-            }
-        ;
+            };
           | TK_NUM
             {
                 $$.label = gentempcode();

@@ -1,11 +1,25 @@
 int main() {
+    str nome[3][20];
+    
+	str resposta;
 
-	int a[0];
-	flt b[0];
-	int i = 0;
-	b[0] = 1;
-	a[0] = 2;	
-	
-	int c = a[i] + b[i];
-	prt(c);
+	prt("eu quero TODOS os paus \n");
+	prt("qual o nome dos 3 paus?  ");
+	for(int i = 0; i < 3; i++) {
+		prt("pau ");
+		prt(i);
+		prt(": ");
+		prt(" \n");
+		receba(resposta);
+		nome[i] = resposta;
+	}
+
+	prt("os nomes dos paus sao: \n");
+	for(int i = 0; i < 3; i++) {
+		prt("pau ");
+		prt(i);
+		prt(": ");
+		prt(nome[i]);
+		prt("\n");
+	}
 }

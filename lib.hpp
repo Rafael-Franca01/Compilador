@@ -1,4 +1,9 @@
 #define YYSTYPE atributos
+#include <iostream>
+#include <string>
+#include <map>
+#include <vector>
+#include <algorithm>
 
 using namespace std;
 int goto_label_qnt = 0;
@@ -37,6 +42,7 @@ vector<string> ordem_declaracoes;
 map<string, string> declaracoes_temp;
 map<string, string> mapa_c_para_original;
 vector<pair<string, string>> pilha_loops;
+vector<pair<string, string>> matrizes_a_liberar;
 
 void gerar_funcao_strlen_se_necessario();
 string contar_string();
@@ -67,20 +73,41 @@ string genlabel(){
 }
 
 atributos desreferenciar_se_necessario(atributos op) {
+    // Se não for um endereço, não há nada a fazer.
     if (!op.eh_endereco) {
         return op; 
     }
+
     atributos res;
-    res.tipo = op.tipo;
+    string c_type_do_valor; // Variável para guardar o tipo C correto do valor.
+
+    // --- LÓGICA CORRIGIDA AQUI ---
+    // Precisamos determinar qual o tipo C do valor que obteremos com o '*'.
+    if (op.tipo == "vetor") {
+        // Se a expressão é um endereço para um "vetor" (como em a[0]),
+        // o valor real que pegamos é um PONTEIRO para o tipo base (ex: char*).
+        c_type_do_valor = mapa_tipos_linguagem_para_c.at(op.tipo_base) + "*";
+    } else {
+        // Para todos os outros casos (endereço de int, float, char),
+        // o tipo do valor é o mesmo tipo da expressão.
+        c_type_do_valor = op.tipo;
+    }
+
+    res.tipo = c_type_do_valor;
     res.label = gentempcode();
+    
+    // Registra o temporário para declaração com o tipo C correto!
     declaracoes_temp[res.label] = res.tipo;
+    
+    // Gera o código da desreferência
     res.traducao = op.traducao + "\t" + res.label + " = *" + op.label + ";\n";
+    
+    // O resultado agora é um valor, não mais um endereço.
     res.eh_endereco = false; 
-    res.eh_vetor = false;
+    res.eh_vetor = (res.tipo.back() == '*'); // É um vetor se seu novo tipo C ainda for um ponteiro.
 
     return res;
 }
-
 atributos converter_implicitamente(atributos op, string tipo_destino) {
     if (op.tipo == tipo_destino) return op;
 
@@ -107,15 +134,22 @@ bool declarar_simbolo(const string& nome_original, const string& tipo_var, const
         yyerror(("Erro Semantico: Variavel '" + nome_original + "' ja declarada neste escopo.").c_str());
         return false;
     }
+
+    // Inicializa TODOS os atributos para evitar lixo de memória.
     atributos atrib;
     atrib.label = label_unico_c;
     atrib.tipo = tipo_var;
     atrib.traducao = "";
     atrib.literal = false;
+    atrib.tamanho_string = 0;
+    atrib.label_tamanho_runtime = "";
+    atrib.eh_vetor = false;     
+    atrib.eh_endereco = false;   
+    atrib.nome_original = nome_original; 
+    atrib.tipo_base = "";      
+
     if (tipo_var == "string") {
-        atrib.tamanho_string = -1; // -1 indica tamanho desconhecido
-    } else {
-        atrib.tamanho_string = 0; // Para outros tipos, não é usado
+        atrib.tamanho_string = -1; 
     }
 
     escopo_atual[nome_original] = atrib;
@@ -167,22 +201,20 @@ string gerar_codigo_declaracoes(
             const string& tipo_linguagem = it_decl_type->second;
             string tipo_c_str = "";
 
-            // --- LÓGICA CORRIGIDA ---
-            // Se o tipo já contém um '*', ele é um ponteiro e um tipo C válido. Use-o diretamente.
             if (tipo_linguagem.find('*') != string::npos) {
                 tipo_c_str = tipo_linguagem;
             } 
-            // A lógica para strings (que também são ponteiros) continua a mesma
+
             else if (tipo_linguagem == "string") {
                 tipo_c_str = "char*";
                 // Lógica para inicializar com NULL se for uma variável declarada, não um temporário
                 auto it_orig_name = p_mapa_c_para_original.find(c_name);
                 if (it_orig_name != p_mapa_c_para_original.end()) {
                     codigo_local += "\t" + tipo_c_str + " " + c_name + " = NULL; // " + it_orig_name->second + "\n";
-                    continue; // Pula para a próxima iteração para não declarar duas vezes
+                    continue; 
                 }
             } 
-            // Se não, é um tipo base que precisa ser procurado no mapa
+           
             else {
                 auto it_mapa_tipos = mapa_tipos_linguagem_para_c.find(tipo_linguagem);
                 if (it_mapa_tipos != mapa_tipos_linguagem_para_c.end()) {
@@ -404,3 +436,55 @@ string contar_string(string ponteiro_destino_c_name, atributos string_origem_rhs
     
     return codigo_gerado;
 }
+
+string gerar_codigo_de_liberacao() {
+    string codigo_final;
+
+    // 1. Liberação de strings e vetores simples
+    for (const auto& var_name : strings_a_liberar) {
+        codigo_final += "\tfree(" + var_name + ");\n";
+    }
+    strings_a_liberar.clear();
+
+    // 2. Liberação de Matrizes
+    for (const auto& mat_info : matrizes_a_liberar) {
+        string mat_ptr_name = mat_info.first;
+        string rows_var_name = mat_info.second;
+
+        // Gera temporários e rótulos para o laço de free
+        string free_loop_counter = gentempcode();
+        string free_cond_var = gentempcode();
+        string free_addr_ptr = gentempcode();
+        string free_row_ptr = gentempcode();
+        string free_loop_start = genlabel();
+        string free_loop_end = genlabel();
+        
+        
+        declaracoes_temp[free_loop_counter] = "int";
+        declaracoes_temp[free_cond_var] = "boolean";
+        declaracoes_temp[free_addr_ptr] = "void**";
+        declaracoes_temp[free_row_ptr] = "void*";
+
+       
+        codigo_final += "\n\t// Liberando a matriz " + mat_ptr_name + "\n";
+        codigo_final += "\t" + free_loop_counter + " = 0;\n";
+        codigo_final += free_loop_start + ":\n";
+        codigo_final += "\t\t" + free_cond_var + " = " + free_loop_counter + " < " + rows_var_name + ";\n";
+        codigo_final += "\t\tif (!" + free_cond_var + ") goto " + free_loop_end + ";\n";
+        
+        codigo_final += "\t\t" + free_addr_ptr + " = (void**)" + mat_ptr_name + " + " + free_loop_counter + ";\n";
+        codigo_final += "\t\t" + free_row_ptr + " = *" + free_addr_ptr + ";\n";
+        codigo_final += "\t\tfree(" + free_row_ptr + ");\n";
+
+        codigo_final += "\t\t" + free_loop_counter + " = " + free_loop_counter + " + 1;\n";
+        codigo_final += "\t\tgoto " + free_loop_start + ";\n";
+        codigo_final += free_loop_end + ":\n";
+
+        // Libera o ponteiro principal da matriz
+        codigo_final += "\tfree(" + mat_ptr_name + ");\n";
+    }
+    matrizes_a_liberar.clear();
+
+    return codigo_final;
+}
+
