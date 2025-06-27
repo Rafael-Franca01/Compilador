@@ -1,25 +1,142 @@
 int main() {
-    str nome[3][20];
-    
-	str resposta;
-
-	prt("eu quero TODOS os paus \n");
-	prt("qual o nome dos 3 paus?  ");
-	for(int i = 0; i < 3; i++) {
-		prt("pau ");
-		prt(i);
-		prt(": ");
-		prt(" \n");
-		receba(resposta);
-		nome[i] = resposta;
+	prt("MATRIZ a: 	\n");
+    int a[5][5];
+	for (int i = 0; i < 5; i++) {
+		for (int j = 0; j < 5; j++) {
+			a[i][j] = i + j;
+			prt(a[i][j]);
+			prt(" ");
+			if (j == 4) {
+				prt("\n");
+			}
+			
+		}
+	}
+	prt("\n");
+    prt("MATRIZ b: 	\n");
+	int b[5][5];
+	for (int i = 0; i < 5; i++) {
+		for (int j = 0; j < 5; j++) {
+			b[i][j] = i + j;
+			prt(b[i][j]);
+			prt(" ");
+			if (j == 4) {
+				prt("\n");
+			}
+		}
 	}
 
-	prt("os nomes dos paus sao: \n");
-	for(int i = 0; i < 3; i++) {
-		prt("pau ");
-		prt(i);
-		prt(": ");
-		prt(nome[i]);
-		prt("\n");
+	int c[5][5];
+
+    prt("\n");
+	prt("MATRIZ a + b: 	\n");
+	c = a + b;
+
+	for (int i = 0; i < 5; i++) {
+		for (int j = 0; j < 5; j++) {
+			prt(c[i][j]);
+			prt(" ");
+			if (j == 4) {
+				prt("\n");
+			}
+		}
 	}
+
+	prt("\n");
+	prt("MATRIZ a - b: 	\n");
+	c = a - b;
+
+	for (int i = 0; i < 5; i++) {
+		for (int j = 0; j < 5; j++) {
+			prt(c[i][j]);
+			prt(" ");
+			if (j == 4) {
+				prt("\n");
+			}
+		}
+	}
+	prt("\n");
+	prt("MATRIZ a * b: 	\n");
+	c = a * b;
+
+	for (int i = 0; i < 5; i++) {
+		for (int j = 0; j < 5; j++) {
+			prt(c[i][j]);
+			prt(" ");
+			if (j == 4) {
+				prt("\n");
+			}
+		}
+	}
+	
+	 prt("MATRIZ x: 	\n");
+    flt x[5][5];
+    for (int i = 0; i < 5; i++) {
+        for (int j = 0; j < 5; j++) {
+            x[i][j] = i + j + 0.35;
+            prt(x[i][j]);
+            prt(" ");
+            if (j == 4) {
+                prt("\n");
+            }
+            
+        }
+    }
+    prt("\n");
+	prt("MATRIZ y: 	\n");
+	flt y[5][5];
+	for (int i = 0; i < 5; i++) {
+		for (int j = 0; j < 5; j++) {
+			y[i][j] = i + j + 0.35;
+			prt(y[i][j]);
+			prt(" ");
+			if (j == 4) {
+				prt("\n");
+			}
+		}
+	}
+
+	flt z[5][5];
+
+	prt("\n");
+	prt("MATRIZ x + y: 	\n");
+	z = x + y;
+
+	for (int i = 0; i < 5; i++) {
+		for (int j = 0; j < 5; j++) {
+			prt(z[i][j]);
+			prt(" ");
+			if (j == 4) {
+				prt("\n");
+			}
+		}
+	}
+
+	prt("\n");
+	prt("MATRIZ x - y: 	\n");
+	z = x - y;
+
+	for (int i = 0; i < 5; i++) {
+		for (int j = 0; j < 5; j++) {
+			prt(z[i][j]);
+			prt(" ");
+			if (j == 4) {
+				prt("\n");
+			}
+		}
+	}
+	prt("\n");
+	prt("MATRIZ x * y: 	\n");
+	z = x * y;
+
+	for (int i = 0; i < 5; i++) {
+		for (int j = 0; j < 5; j++) {
+			prt(z[i][j]);
+			prt(" ");
+			if (j == 4) {
+				prt("\n");
+			}
+		}
+	}
+	
 }

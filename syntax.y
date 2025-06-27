@@ -512,8 +512,12 @@ DECLARACAO : TIPO TK_ID
         string original_name = $2.label;
         string c_code_name = gentempcode(); 
         string tipo_declarado = $1.tipo;
+        
+
+        $$ = $4; // Começa copiando os atributos da expressão da direita
         $$.label = c_code_name; 
         $$.tipo = tipo_declarado;
+        $$.nome_original = original_name;
 
         if (declarar_simbolo(original_name, tipo_declarado, c_code_name)) {
             declaracoes_temp[c_code_name] = tipo_declarado;
@@ -554,28 +558,36 @@ DECLARACAO : TIPO TK_ID
                 $$ = atributos();
             } else {
                 
-                // --- AJUSTE PARA MATRIZ DE STRING AQUI ---
                 string c_type_base;
                 if ($1.tipo == "string") {
-                    // Para uma matriz de strings, o tipo C fundamental é 'char'.
                     c_type_base = "char";
                 } else {
-                    // Para outros tipos (int, flt), usamos o mapa como antes.
                     c_type_base = mapa_tipos_linguagem_para_c.at($1.tipo);
                 }
 
-                // 1. Nomes e Atributos para a Tabela de Símbolos
                 string c_name = gentempcode();
                 atributos mat_attrs;
                 mat_attrs.label = c_name;
                 mat_attrs.tipo = "matriz";
-                mat_attrs.tipo_base = ($1.tipo == "string") ? "char" : $1.tipo; // O tipo base dos elementos
+                mat_attrs.tipo_base = ($1.tipo == "string") ? "char" : $1.tipo;
                 mat_attrs.eh_vetor = true; 
+                mat_attrs.label_linhas = $4.label;
+                mat_attrs.label_colunas = $7.label;
+
+                if ($4.eh_literal) {
+                    mat_attrs.valor_linhas = $4.valor_literal;
+                } else {
+                    mat_attrs.valor_linhas = -1; 
+                }
+
+                if ($7.eh_literal) {
+                    mat_attrs.valor_colunas = $7.valor_literal;
+                } else {
+                    mat_attrs.valor_colunas = -1; 
+                }
+
                 pilha_tabelas_simbolos.back()[original_name] = mat_attrs;
                 
-                // O resto do código permanece EXATAMENTE O MESMO!
-                // Ele usará a variável 'c_type_base' que definimos acima.
-
                 string temp_loop_var = gentempcode();
                 string temp_condicao = gentempcode();
                 string label_inicio_loop = genlabel();
@@ -592,7 +604,6 @@ DECLARACAO : TIPO TK_ID
 
                 $$.traducao = $4.traducao + $7.traducao; 
                 $$.traducao += "\t" + c_name + " = (" + c_type_base + "**) malloc(" + $4.label + " * sizeof(" + c_type_base + "*));\n";
-
                 $$.traducao += "\t" + temp_loop_var + " = 0;\n";
                 $$.traducao += label_inicio_loop + ":\n";
                 $$.traducao += "\t\t" + temp_condicao + " = " + temp_loop_var + " < " + $4.label + ";\n";
@@ -608,6 +619,7 @@ DECLARACAO : TIPO TK_ID
             }
         }
     };
+
 | TIPO TK_ID '[' E ']'
     {
         if ($4.tipo != "int") {
@@ -730,19 +742,7 @@ E : POSTFIX_E '=' E
   | E TK_IGUAL_IGUAL E   { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "==", "==", desreferenciar_se_necessario($3)); }
   | UNARY_E
     {
-        $$.label = $1.label;
-        $$.traducao = $1.traducao;
-        $$.tipo = $1.tipo;
-        $$.tamanho_string = $1.tamanho_string;
-        $$.literal = $1.literal;
-        $$.cases = $1.cases;
-        $$.default_label = $1.default_label;
-        $$.label_final_switch = $1.label_final_switch;
-        $$.label_tamanho_runtime = $1.label_tamanho_runtime;
-        $$.eh_vetor = $1.eh_vetor;
-        $$.eh_endereco = $1.eh_endereco;
-        $$.tipo_base = $1.tipo_base;
-        $$.nome_original = $1.nome_original;
+        $$ = $1;
     }
   ;
 
@@ -751,15 +751,7 @@ UNARY_E : TK_MAIS_MAIS UNARY_E  { $$ = criar_expressao_unaria($2, "+"); } // Pr�
         | '~' UNARY_E            { $$ = criar_expressao_unaria($2, "~"); }
         | POSTFIX_E
         {
-            $$.label = $1.label;
-            $$.traducao = $1.traducao;
-            $$.tipo = $1.tipo;
-            $$.tamanho_string = $1.tamanho_string;
-            $$.literal = $1.literal;
-            $$.cases = $1.cases;
-            $$.default_label = $1.default_label;
-            $$.label_final_switch = $1.label_final_switch;
-            $$.label_tamanho_runtime = $1.label_tamanho_runtime;
+            $$ = $1;
         }
         ;
 
@@ -891,6 +883,8 @@ POSTFIX_E : POSTFIX_E TK_MAIS_MAIS // precisa desse postfix se nao fica ambiguo
                 $$.traducao = "\t" + $$.label + " = " + $1.label + ";\n";
                 $$.tipo = "int";
                 declaracoes_temp[$$.label] = $$.tipo;
+                $$.valor_literal = atoi($1.label.c_str());
+                $$.eh_literal = true;
             }
           | TK_FLOAT
             {
