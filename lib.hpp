@@ -4,6 +4,7 @@
 #include <map>
 #include <vector>
 #include <algorithm>
+#include <stack>
 
 using namespace std;
 int goto_label_qnt = 0;
@@ -20,6 +21,14 @@ vector<string> strings_a_liberar_no_comando;
 string codigo_funcoes_auxiliares;
 bool funcao_strlen_gerada = false;
 vector<string> strings_a_liberar;
+
+struct ParamInfo {
+    string tipo;
+    string tipo_base;
+    string nome_original;
+    string nome_no_c; // Nome que o parâmetro terá no código C gerado
+};
+
 struct CaseInfo {
     string valor;
     string tipo;
@@ -49,12 +58,17 @@ struct atributos
     bool eh_literal;    // Sinaliza se a expressão é um literal conhecido
     int valor_linhas;   // Guarda o valor literal das linhas da matriz
     int valor_colunas;  // Guarda o valor literal das colunas da matriz 
+
+    string kind; // "variable", "function", "function_definition" etc.
+    vector<ParamInfo> params; // Guarda a lista de parâmetros de uma função
+    vector<atributos> args;   // Guarda a lista de argumentos em uma chamada de função
 };
 
+stack<atributos> pilha_funcoes_atuais;
 vector<map<string, atributos>> pilha_tabelas_simbolos;
-vector<string> ordem_declaracoes;
-map<string, string> declaracoes_temp;
-map<string, string> mapa_c_para_original;
+stack<vector<string>> ordem_declaracoes;
+stack<map<string, string>> declaracoes_temp;
+stack<map<string, string>> mapa_c_para_original;
 vector<pair<string, string>> pilha_loops;
 vector<pair<string, string>> matrizes_a_liberar;
 
@@ -75,7 +89,8 @@ static const map<string, string> mapa_tipos_linguagem_para_c = {
         {"float", "float"},
         {"char", "char"},
         {"boolean", "int"},
-        {"string", "char*"}
+        {"string", "char*"},
+        {"void", "void"}
 };
 
 static const std::map<std::string, int> mapa_tamanhos_tipos = {
@@ -92,6 +107,10 @@ string gentempcode();
 
 string genlabel(){
     return "G" + to_string(++goto_label_qnt);
+}
+
+string genuniquename() {
+    return "t" + to_string(++var_temp_qnt);
 }
 
 atributos desreferenciar_se_necessario(atributos op) {
@@ -119,7 +138,7 @@ atributos desreferenciar_se_necessario(atributos op) {
     res.label = gentempcode();
     
     // Registra o temporário para declaração com o tipo C correto!
-    declaracoes_temp[res.label] = res.tipo;
+    declaracoes_temp.top()[res.label] = res.tipo;
     
     // Gera o código da desreferência
     res.traducao = op.traducao + "\t" + res.label + " = *" + op.label + ";\n";
@@ -138,7 +157,7 @@ atributos converter_implicitamente(atributos op, string tipo_destino) {
         convertido.label = gentempcode();
         convertido.tipo = tipo_destino;
         convertido.traducao = op.traducao + "\t" + convertido.label + " = (" + tipo_destino + ") " + op.label + ";\n";
-        declaracoes_temp[convertido.label] = tipo_destino;
+        declaracoes_temp.top()[convertido.label] = tipo_destino;
         return convertido;
     }
 
@@ -152,12 +171,12 @@ bool declarar_simbolo(const string& nome_original, const string& tipo_var, const
         return false;
     }
     map<string, atributos>& escopo_atual = pilha_tabelas_simbolos.back();
+
     if (escopo_atual.count(nome_original)) {
         yyerror(("Erro Semantico: Variavel '" + nome_original + "' ja declarada neste escopo.").c_str());
         return false;
     }
 
-    // Inicializa TODOS os atributos para evitar lixo de memória.
     atributos atrib;
     atrib.label = label_unico_c;
     atrib.tipo = tipo_var;
@@ -165,17 +184,17 @@ bool declarar_simbolo(const string& nome_original, const string& tipo_var, const
     atrib.literal = false;
     atrib.tamanho_string = 0;
     atrib.label_tamanho_runtime = "";
-    atrib.eh_vetor = false;     
-    atrib.eh_endereco = false;   
-    atrib.nome_original = nome_original; 
-    atrib.tipo_base = ""; 
-     atrib.valor_literal = 0;
+    atrib.eh_vetor = false;
+    atrib.eh_endereco = false;
+    atrib.nome_original = nome_original;
+    atrib.tipo_base = "";
+    atrib.valor_literal = 0;
     atrib.eh_literal = false;
-    atrib.valor_linhas = -1;  
-    atrib.valor_colunas = -1;    
+    atrib.valor_linhas = -1;
+    atrib.valor_colunas = -1;
 
     if (tipo_var == "string") {
-        atrib.tamanho_string = -1; 
+        atrib.tamanho_string = -1;
     }
 
     escopo_atual[nome_original] = atrib;
@@ -205,54 +224,54 @@ void atualizar_info_string_simbolo(const string& nome_variavel, atributos rhs) {
 
 void entrar_escopo() {
     pilha_tabelas_simbolos.emplace_back();
+    ordem_declaracoes.push({});
+    declaracoes_temp.push({});
+    mapa_c_para_original.push({});
 }
 
 void sair_escopo() {
     if (!pilha_tabelas_simbolos.empty()) {
         pilha_tabelas_simbolos.pop_back();
+        ordem_declaracoes.pop();
+        declaracoes_temp.pop();
+        mapa_c_para_original.pop();
     } else {
         cerr << "Erro crítico: Tentativa de sair de escopo com pilha vazia!" << endl;
     }
 }
 
-string gerar_codigo_declaracoes(
-    const vector<string>& p_ordem_declaracoes, 
-    const map<string, string>& p_declaracoes_temp, 
-    const map<string, string>& p_mapa_c_para_original
-) { 
+string gerar_codigo_declaracoes() {
     string codigo_local;
-    for (const auto &c_name : p_ordem_declaracoes) {
-        auto it_decl_type = p_declaracoes_temp.find(c_name);
-        if (it_decl_type != p_declaracoes_temp.end()) {
+    // Pega as listas do topo da pilha (escopo atual)
+    vector<string>& ordem_declaracoes_atual = ordem_declaracoes.top();
+    map<string, string>& declaracoes_temp_atual = declaracoes_temp.top();
+    map<string, string>& mapa_c_para_original_atual = mapa_c_para_original.top();
+
+    for (const auto &c_name : ordem_declaracoes_atual) {
+        auto it_decl_type = declaracoes_temp_atual.find(c_name);
+        if (it_decl_type != declaracoes_temp_atual.end()) {
             const string& tipo_linguagem = it_decl_type->second;
             string tipo_c_str = "";
 
             if (tipo_linguagem.find('*') != string::npos) {
                 tipo_c_str = tipo_linguagem;
-            } 
-
-            else if (tipo_linguagem == "string") {
+            } else if (tipo_linguagem == "string") {
                 tipo_c_str = "char*";
-                // Lógica para inicializar com NULL se for uma variável declarada, não um temporário
-                auto it_orig_name = p_mapa_c_para_original.find(c_name);
-                if (it_orig_name != p_mapa_c_para_original.end()) {
+                auto it_orig_name = mapa_c_para_original_atual.find(c_name);
+                if (it_orig_name != mapa_c_para_original_atual.end()) {
                     codigo_local += "\t" + tipo_c_str + " " + c_name + " = NULL; // " + it_orig_name->second + "\n";
-                    continue; 
+                    continue;
                 }
-            } 
-           
-            else {
+            } else {
                 auto it_mapa_tipos = mapa_tipos_linguagem_para_c.find(tipo_linguagem);
                 if (it_mapa_tipos != mapa_tipos_linguagem_para_c.end()) {
                     tipo_c_str = it_mapa_tipos->second;
                 }
             }
-
-            // Gera a declaração final
             if (!tipo_c_str.empty()) {
                 codigo_local += "\t" + tipo_c_str + " " + c_name + ";";
-                auto it_orig_name = p_mapa_c_para_original.find(c_name);
-                if (it_orig_name != p_mapa_c_para_original.end()) {
+                auto it_orig_name = mapa_c_para_original_atual.find(c_name);
+                if (it_orig_name != mapa_c_para_original_atual.end()) {
                     codigo_local += " // " + it_orig_name->second;
                 }
                 codigo_local += "\n";
@@ -269,7 +288,7 @@ atributos gerar_codigo_concatenacao(atributos str1, atributos str2) {
     res.tipo = "string";
     res.literal = false;
     res.label = gentempcode();
-    declaracoes_temp[res.label] = "string";
+    declaracoes_temp.top()[res.label] = "string";
 
     strings_a_liberar_no_comando.push_back(res.label);
     string codigo;
@@ -285,7 +304,7 @@ atributos gerar_codigo_concatenacao(atributos str1, atributos str2) {
         len1_str = str1.label_tamanho_runtime;
     } else {
         string len1_temp = gentempcode();
-        declaracoes_temp[len1_temp] = "int";
+        declaracoes_temp.top()[len1_temp] = "int";
         codigo += "\t" + len1_temp + " = obter_tamanho_string(" + str1.label + ");\n";
         len1_str = len1_temp;
     }
@@ -296,13 +315,13 @@ atributos gerar_codigo_concatenacao(atributos str1, atributos str2) {
         len2_str = str2.label_tamanho_runtime;
     } else {
         string len2_temp = gentempcode();
-        declaracoes_temp[len2_temp] = "int";
+        declaracoes_temp.top()[len2_temp] = "int";
         codigo += "\t" + len2_temp + " = obter_tamanho_string(" + str2.label + ");\n";
         len2_str = len2_temp;
     }
     
     string soma_parcial_temp = gentempcode();
-    declaracoes_temp[soma_parcial_temp] = "int";
+    declaracoes_temp.top()[soma_parcial_temp] = "int";
     codigo += "\t" + soma_parcial_temp + " = " + len1_str + " + " + len2_str + ";\n";
 
     if (str1.tamanho_string >= 0 && str2.tamanho_string >= 0) {
@@ -314,7 +333,7 @@ atributos gerar_codigo_concatenacao(atributos str1, atributos str2) {
     }
 
     string tamanho_total_temp = gentempcode();
-    declaracoes_temp[tamanho_total_temp] = "int";
+    declaracoes_temp.top()[tamanho_total_temp] = "int";
     codigo += "\t" + tamanho_total_temp + " = " + soma_parcial_temp + " + 1;\n";
 
     codigo += "\t" + res.label + " = (char*) malloc(" + tamanho_total_temp + ");\n";
@@ -393,7 +412,7 @@ atributos criar_expressao_binaria(atributos op1, string op_str_lexical, string o
         res.nome_original = res.label;
         
         string tipo_c_resultado = mapa_tipos_linguagem_para_c.at(res.tipo_base) + "**";
-        declaracoes_temp[res.label] = tipo_c_resultado;
+        declaracoes_temp.top()[res.label] = tipo_c_resultado;
 
         res.traducao = op1.traducao + op2.traducao; 
         res.traducao += "\t" + res.label + " = " + func_name + "(" 
@@ -451,7 +470,7 @@ atributos criar_expressao_binaria(atributos op1, string op_str_lexical, string o
     }
 
     res.label = gentempcode();
-    declaracoes_temp[res.label] = res.tipo; 
+    declaracoes_temp.top()[res.label] = res.tipo; 
     res.traducao = op1.traducao + op2.traducao +
                                          "\t" + res.label + " = " + op1.label + " " + op_str_c + " " + op2.label + ";\n";
     return res;
@@ -462,7 +481,7 @@ atributos criar_expressao_unaria(atributos op, string op_str_lexical) {
         if (op.tipo == "int" || op.tipo == "float") {
             res.label = op.label;
             res.tipo = op.tipo;
-            declaracoes_temp[res.label] = res.tipo;
+            declaracoes_temp.top()[res.label] = res.tipo;
             res.traducao = op.traducao + "\t" + res.label + " = " + op.label + " " + op_str_lexical + " 1;\n";
             return res;
         } else {
@@ -473,7 +492,7 @@ atributos criar_expressao_unaria(atributos op, string op_str_lexical) {
     } 
     res.label = gentempcode();
     res.tipo = "boolean";
-    declaracoes_temp[res.label] = res.tipo;
+    declaracoes_temp.top()[res.label] = res.tipo;
     res.traducao = op.traducao + "\t" + res.label + " = !" + op.label + ";\n";
     return res;
 }
@@ -524,13 +543,13 @@ string contar_string(string ponteiro_destino_c_name, atributos string_origem_rhs
     } else {
         gerar_funcao_strlen_se_necessario();
         string len_temp = gentempcode();
-        declaracoes_temp[len_temp] = "int";
+        declaracoes_temp.top()[len_temp] = "int";
         codigo_gerado += "\t" + len_temp + " = obter_tamanho_string(" + string_origem_rhs.label + ");\n";
         len_var_name = len_temp;
     }
     
     string tamanho_total_temp = gentempcode();
-    declaracoes_temp[tamanho_total_temp] = "int";
+    declaracoes_temp.top()[tamanho_total_temp] = "int";
     codigo_gerado += "\t" + tamanho_total_temp + " = " + len_var_name + " + 1;\n";
     codigo_gerado += "\t" + ponteiro_destino_c_name + " = (char*) malloc(" + tamanho_total_temp + ");\n";
     codigo_gerado += "\tstrcpy(" + ponteiro_destino_c_name + ", " + string_origem_rhs.label + ");\n";
@@ -561,10 +580,10 @@ string gerar_codigo_de_liberacao() {
         string free_loop_end = genlabel();
         
         
-        declaracoes_temp[free_loop_counter] = "int";
-        declaracoes_temp[free_cond_var] = "boolean";
-        declaracoes_temp[free_addr_ptr] = "void**";
-        declaracoes_temp[free_row_ptr] = "void*";
+        declaracoes_temp.top()[free_loop_counter] = "int";
+        declaracoes_temp.top()[free_cond_var] = "boolean";
+        declaracoes_temp.top()[free_addr_ptr] = "void**";
+        declaracoes_temp.top()[free_row_ptr] = "void*";
 
        
         codigo_final += "\n\t// Liberando a matriz " + mat_ptr_name + "\n";
