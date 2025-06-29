@@ -1,30 +1,44 @@
-cls PacoteMatriz {
-  int m[2][2];
+cls Ponto {
+  int x;
+  int y;
+};
+cls Retangulo {
+  Ponto cse; 
+  Ponto cid; 
+  int cor;
 };
 
 int main() {
-    PacoteMatriz A;
-    PacoteMatriz B;
-    PacoteMatriz Soma;
-    PacoteMatriz Sub;
-    PacoteMatriz Mult;
+  Retangulo r;
+  int temp;
 
-    A.m[0][0] = 1; A.m[0][1] = 2;
-    A.m[1][0] = 3; A.m[1][1] = 4;
+  
+  r.cse.x = 10;
+  r.cse.y = 20;
+  r.cid.x = 99;
+  r.cid.y = 88;
+  r.cor = 255;
 
-    B.m[0][0] = 5; B.m[0][1] = 6;
-    B.m[1][0] = 7; B.m[1][1] = 8;
+  
+  prt(r.cse.x);
+  prt(' ');
+  prt(r.cse.y);
+  prt('\n');
 
-    Soma.m = A.m + B.m;
-    Sub.m = A.m - B.m;
-    Mult.m = A.m * B.m;
+  
+  prt(r.cid.x);
+  prt(' ');
+  prt(r.cid.y);
+  prt('\n');
+  
+  
+  prt(r.cor);
+  prt('\n');
 
-    prt("Soma (Soma.m[1][1]): ");
-    prt(Soma.m[1][1]); 
+  
+  r.cse.x = r.cse.x + 5; 
+  
+  prt(r.cse.x);
+  prt('\n');
 
-    prt("\nSubtracao (Sub.m[0][1]): ");
-    prt(Sub.m[0][1]); 
-
-    prt("\nMultiplicacao (Mult.m[1][0]): ");
-    prt(Mult.m[1][0]);
 }

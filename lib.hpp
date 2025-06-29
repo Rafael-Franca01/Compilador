@@ -150,6 +150,9 @@ atributos desreferenciar_se_necessario(atributos op) {
         c_type_do_valor = mapa_tipos_linguagem_para_c.at(op.tipo_base) + "*";
     } else if (op.tipo == "matriz") {
         c_type_do_valor = mapa_tipos_linguagem_para_c.at(op.tipo_base) + "**";
+    } else if (classes_definidas.count(op.tipo)) {
+         // Se o tipo é uma classe definida, o tipo C do valor é 'struct NomeDaClasse'
+         c_type_do_valor = "struct " + op.tipo;
     }
     else {
         c_type_do_valor = mapa_tipos_linguagem_para_c.at(op.tipo);

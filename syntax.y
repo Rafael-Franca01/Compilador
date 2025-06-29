@@ -66,12 +66,12 @@ DEF_GLOBAL : DEFINICAO_FUNCAO { $$ = $1; }
            ;
 
 DEFINICAO_CLASSE : TK_CLASS TK_ID '{'
-                       { estamos_definindo_classe = true; }  // <-- LIGA A FLAG
-                       LISTA_MEMBROS
-                   '}'
-                       { estamos_definindo_classe = false; } // <-- DESLIGA A FLAG
-                   ';'
-                   {
+                   { estamos_definindo_classe = true; }
+                   LISTA_MEMBROS
+               '}'
+                   { estamos_definindo_classe = false; }
+               ';'
+               {
     string nome_classe = $2.label;
     if (classes_definidas.count(nome_classe)) {
         yyerror("Classe '" + nome_classe + "' ja foi definida.");
@@ -80,11 +80,10 @@ DEFINICAO_CLASSE : TK_CLASS TK_ID '{'
         nova_classe.nome = nome_classe;
         nova_classe.tamanho_total = 0;
         
-        // Gera a string da struct em C
         string definicao_struct_c = "\nstruct " + nome_classe + " {\n";
         
-        // Itera sobre os membros declarados em LISTA_MEMBROS
-for (const auto& membro_decl : $5.args) {
+        // --- INÍCIO DA LÓGICA CORRIGIDA E LIMPA ---
+        for (const auto& membro_decl : $5.args) {
             MemberInfo novo_membro;
             novo_membro.nome = membro_decl.nome_original;
             novo_membro.tipo = membro_decl.tipo;
@@ -95,44 +94,55 @@ for (const auto& membro_decl : $5.args) {
             string declaracao_membro_c;
             int tamanho_membro_bytes = 0;
 
+            // CASO 1: O membro é um vetor
             if (membro_decl.tipo == "vetor") {
                 string c_base_type = mapa_tipos_linguagem_para_c.at(membro_decl.tipo_base);
                 declaracao_membro_c = c_base_type + "* " + novo_membro.nome;
-                tamanho_membro_bytes = 8;
+                tamanho_membro_bytes = 8; // Tamanho de um ponteiro
 
+            // CASO 2: O membro é uma matriz
             } else if (membro_decl.tipo == "matriz") {
                 string c_base_type = mapa_tipos_linguagem_para_c.at(membro_decl.tipo_base);
                 declaracao_membro_c = c_base_type + "** " + novo_membro.nome;
-                tamanho_membro_bytes = 8;
+                tamanho_membro_bytes = 8; // Tamanho de um ponteiro para ponteiro
 
+            // CASO 3: O membro é de outro tipo (primitivo ou outra classe)
             } else {
                 string c_type;
+                // Sub-caso 3.1: O tipo é uma classe já definida?
                 if (classes_definidas.count(membro_decl.tipo)) {
                     c_type = "struct " + membro_decl.tipo;
-                } else {
+                    tamanho_membro_bytes = classes_definidas.at(membro_decl.tipo).tamanho_total;
+                
+                // Sub-caso 3.2: O tipo é um primitivo conhecido?
+                } else if (mapa_tipos_linguagem_para_c.count(membro_decl.tipo)) {
                     c_type = mapa_tipos_linguagem_para_c.at(membro_decl.tipo);
+                    tamanho_membro_bytes = mapa_tamanhos_tipos.at(membro_decl.tipo);
+                
+                // Sub-caso 3.3: É um tipo desconhecido
+                } else {
+                    yyerror("Tipo desconhecido '" + membro_decl.tipo + "' para o membro '" + novo_membro.nome + "'.");
+                    continue; // Pula para o próximo membro do loop
                 }
                 declaracao_membro_c = c_type + " " + novo_membro.nome;
-                tamanho_membro_bytes = mapa_tamanhos_tipos.at(membro_decl.tipo);
             }
 
+            // Ações comuns a todos os tipos de membro
             novo_membro.offset = nova_classe.tamanho_total;
             nova_classe.membros.push_back(novo_membro);
-            
             definicao_struct_c += "\t" + declaracao_membro_c + ";\n";
-            
             nova_classe.tamanho_total += tamanho_membro_bytes;
         }
+        // --- FIM DA LÓGICA CORRIGIDA E LIMPA ---
         
         definicao_struct_c += "};\n";
 
-        // Armazena a definição da classe e o código C gerado
         classes_definidas[nome_classe] = nova_classe;
         codigo_funcoes_globais += definicao_struct_c;
     }
     
     $$.kind = "class_definition";
-    $$.traducao = ""; // A definição não gera código executável, apenas global
+    $$.traducao = "";
 }
 
 LISTA_MEMBROS : DECLARACAO ';' LISTA_MEMBROS
@@ -1220,69 +1230,76 @@ POSTFIX_E : POSTFIX_E TK_MAIS_MAIS
             }
         }
     }
-          | POSTFIX_E TK_PONTO TK_ID
-    {
-        atributos obj = desreferenciar_se_necessario($1);
-        string nome_membro = $3.label;
+| POSTFIX_E TK_PONTO TK_ID
+{
+    atributos base_obj = $1;
+    string nome_membro = $3.label;
 
-        auto it_classe = classes_definidas.find(obj.tipo);
-        if (it_classe == classes_definidas.end()) {
-            yyerror("Erro Semantico: Variavel '" + obj.nome_original + "' nao e um objeto de classe.");
+    auto it_classe = classes_definidas.find(base_obj.tipo);
+    if (it_classe == classes_definidas.end()) {
+        yyerror("Erro Semantico: Acesso de membro '.' em algo que nao e uma classe: '" + base_obj.nome_original + "'.");
+        $$ = atributos();
+    } else {
+        auto& classe_info = it_classe->second;
+        MemberInfo* membro_info = nullptr;
+        for(auto& m : classe_info.membros) { if (m.nome == nome_membro) { membro_info = &m; break; } }
+
+        if (membro_info == nullptr) {
+            yyerror("Erro Semantico: Classe '" + base_obj.tipo + "' nao tem um membro chamado '" + nome_membro + "'.");
             $$ = atributos();
         } else {
-            auto& classe_info = it_classe->second;
-            MemberInfo* membro_info = nullptr;
-            for(auto& m : classe_info.membros) { if (m.nome == nome_membro) { membro_info = &m; break; } }
+            $$.traducao = base_obj.traducao;
+            $$.nome_original = base_obj.nome_original + "." + nome_membro;
+            $$.tipo = membro_info->tipo;
+            $$.tipo_base = membro_info->tipo_base;
+            $$.valor_linhas = membro_info->valor_linhas;
+            $$.valor_colunas = membro_info->valor_colunas;
 
-            if (membro_info == nullptr) {
-                yyerror("Erro Semantico: Classe '" + obj.tipo + "' nao tem um membro chamado '" + nome_membro + "'.");
-                $$ = atributos();
-            } else {
-                $$.traducao = obj.traducao;
-                $$.nome_original = obj.nome_original + "." + nome_membro;
-                $$.tipo = membro_info->tipo;
-                $$.tipo_base = membro_info->tipo_base;
-                
-                // Carrega as dimensões LITERAIS (ex: 2, 2)
-                $$.valor_linhas = membro_info->valor_linhas;
-                $$.valor_colunas = membro_info->valor_colunas;
-
-                // Cria temporárias para as dimensões para usar nas chamadas de função C
+            if ($$.tipo == "matriz" || $$.tipo == "vetor") {
                 string linhas_label = gentempcode();
                 declaracoes_temp.top()[linhas_label] = "int";
                 $$.traducao += "\t" + linhas_label + " = " + to_string(membro_info->valor_linhas) + ";\n";
                 $$.label_linhas = linhas_label;
 
-                string colunas_label = gentempcode();
-                declaracoes_temp.top()[colunas_label] = "int";
-                $$.traducao += "\t" + colunas_label + " = " + to_string(membro_info->valor_colunas) + ";\n";
-                $$.label_colunas = colunas_label;
-
-                // O resultado da expressão 'obj.membro' é o seu endereço de memória.
-                // Isso permite que ele seja usado tanto para leitura quanto para escrita.
-                string addr_temp = gentempcode();
-                string member_c_type;
-                
-                if (membro_info->tipo == "vetor") {
-                    member_c_type = mapa_tipos_linguagem_para_c.at(membro_info->tipo_base) + "*";
-                } else if (membro_info->tipo == "matriz") {
-                    member_c_type = mapa_tipos_linguagem_para_c.at(membro_info->tipo_base) + "**";
-                } else if (classes_definidas.count(membro_info->tipo)) {
-                    member_c_type = "struct " + membro_info->tipo;
-                } else {
-                    member_c_type = mapa_tipos_linguagem_para_c.at(membro_info->tipo);
+                if ($$.tipo == "matriz") {
+                    string colunas_label = gentempcode();
+                    declaracoes_temp.top()[colunas_label] = "int";
+                    $$.traducao += "\t" + colunas_label + " = " + to_string(membro_info->valor_colunas) + ";\n";
+                    $$.label_colunas = colunas_label;
                 }
-
-                string temp_addr_type = member_c_type + "*";
-                declaracoes_temp.top()[addr_temp] = temp_addr_type;
-                
-                $$.traducao += "\t" + addr_temp + " = &" + obj.label + "." + nome_membro + ";\n";
-
-                $$.label = addr_temp;
-                $$.eh_endereco = true;
             }
+
+            string addr_temp = gentempcode();
+            string member_c_type;
+            
+            if (membro_info->tipo == "vetor") {
+                member_c_type = mapa_tipos_linguagem_para_c.at(membro_info->tipo_base) + "*";
+            } else if (membro_info->tipo == "matriz") {
+                member_c_type = mapa_tipos_linguagem_para_c.at(membro_info->tipo_base) + "**";
+            } else if (classes_definidas.count(membro_info->tipo)) {
+                member_c_type = "struct " + membro_info->tipo;
+            } else {
+                member_c_type = mapa_tipos_linguagem_para_c.at(membro_info->tipo);
+            }
+
+            // --- ESTA É A LÓGICA CORRIGIDA ---
+            // O tipo do ponteiro para o membro é sempre "o tipo C do membro" + "*"
+            string temp_addr_type = member_c_type + "*";
+            declaracoes_temp.top()[addr_temp] = temp_addr_type;
+            // --- FIM DA LÓGICA CORRIGIDA ---
+            
+            if (base_obj.eh_endereco) {
+                // Esta parte está correta, mas não é usada neste exemplo
+                $$.traducao += "\t" + addr_temp + " = &(" + base_obj.label + "->" + nome_membro + ");\n";
+            } else {
+                $$.traducao += "\t" + addr_temp + " = &" + base_obj.label + "." + nome_membro + ";\n";
+            }
+
+            $$.label = addr_temp;
+            $$.eh_endereco = true;
         }
     }
+}
           | TK_NUM
             {
                 $$.label = gentempcode();
