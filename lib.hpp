@@ -10,6 +10,7 @@ using namespace std;
 int goto_label_qnt = 0;
 int var_temp_qnt = 0;
 int contador_linha = 1;
+bool estamos_definindo_classe = false;
 bool funcao_mult_matriz_int_gerada = false;
 bool funcao_add_matriz_int_gerada = false;
 bool funcao_sub_matriz_int_gerada = false;
@@ -28,6 +29,8 @@ struct ParamInfo {
     string nome_original;
     string nome_no_c; // Nome que o parâmetro terá no código C gerado
 };
+
+
 
 struct CaseInfo {
     string valor;
@@ -63,6 +66,26 @@ struct atributos
     vector<ParamInfo> params; // Guarda a lista de parâmetros de uma função
     vector<atributos> args;   // Guarda a lista de argumentos em uma chamada de função
 };
+
+// Informação sobre um único membro de uma classe
+struct MemberInfo {
+    string nome;
+    string tipo;
+    string tipo_base; // Para vetores/matrizes dentro da classe
+    int offset;       // Deslocamento em bytes do início da struct
+    int valor_linhas;   // <-- ADICIONE ESTE CAMPO
+    int valor_colunas;  // <-- ADICIONE ESTE CAMPO
+};
+
+// Informação sobre uma classe/struct inteira
+struct ClassInfo {
+    string nome;
+    vector<MemberInfo> membros;
+    int tamanho_total; // Tamanho total da struct em bytes
+};
+
+// Um mapa global para guardar todas as classes que foram definidas
+map<string, ClassInfo> classes_definidas;
 
 stack<atributos> pilha_funcoes_atuais;
 vector<map<string, atributos>> pilha_tabelas_simbolos;
@@ -242,36 +265,39 @@ void sair_escopo() {
 
 string gerar_codigo_declaracoes() {
     string codigo_local;
-    // Pega as listas do topo da pilha (escopo atual)
-    vector<string>& ordem_declaracoes_atual = ordem_declaracoes.top();
-    map<string, string>& declaracoes_temp_atual = declaracoes_temp.top();
-    map<string, string>& mapa_c_para_original_atual = mapa_c_para_original.top();
+    if (ordem_declaracoes.empty()) return "";
+    
+    vector<string>& ordem_atual = ordem_declaracoes.top();
+    map<string, string>& decls_atuais = declaracoes_temp.top();
+    map<string, string>& mapa_nomes_atuais = mapa_c_para_original.top();
 
-    for (const auto &c_name : ordem_declaracoes_atual) {
-        auto it_decl_type = declaracoes_temp_atual.find(c_name);
-        if (it_decl_type != declaracoes_temp_atual.end()) {
-            const string& tipo_linguagem = it_decl_type->second;
+    for (const auto &c_name : ordem_atual) {
+        auto it_decl_type = decls_atuais.find(c_name);
+        if (it_decl_type != decls_atuais.end()) {
+            const string& tipo_str = it_decl_type->second;
             string tipo_c_str = "";
 
-            if (tipo_linguagem.find('*') != string::npos) {
-                tipo_c_str = tipo_linguagem;
-            } else if (tipo_linguagem == "string") {
-                tipo_c_str = "char*";
-                auto it_orig_name = mapa_c_para_original_atual.find(c_name);
-                if (it_orig_name != mapa_c_para_original_atual.end()) {
-                    codigo_local += "\t" + tipo_c_str + " " + c_name + " = NULL; // " + it_orig_name->second + "\n";
-                    continue;
-                }
-            } else {
-                auto it_mapa_tipos = mapa_tipos_linguagem_para_c.find(tipo_linguagem);
+            // --- LÓGICA DEFINITIVA ---
+            // 1. O tipo já é um tipo C explícito (contém '*' ou 'struct')?
+            if (tipo_str.find('*') != string::npos || tipo_str.find("struct") != string::npos) {
+                tipo_c_str = tipo_str;
+            }
+            // 2. Se não, o tipo é um nome de classe que definimos?
+            else if (classes_definidas.count(tipo_str)) {
+                tipo_c_str = "struct " + tipo_str;
+            }
+            // 3. Se não, é um tipo primitivo que precisa ser traduzido?
+            else {
+                auto it_mapa_tipos = mapa_tipos_linguagem_para_c.find(tipo_str);
                 if (it_mapa_tipos != mapa_tipos_linguagem_para_c.end()) {
                     tipo_c_str = it_mapa_tipos->second;
                 }
             }
+            
             if (!tipo_c_str.empty()) {
                 codigo_local += "\t" + tipo_c_str + " " + c_name + ";";
-                auto it_orig_name = mapa_c_para_original_atual.find(c_name);
-                if (it_orig_name != mapa_c_para_original_atual.end()) {
+                auto it_orig_name = mapa_nomes_atuais.find(c_name);
+                if (it_orig_name != mapa_nomes_atuais.end()) {
                     codigo_local += " // " + it_orig_name->second;
                 }
                 codigo_local += "\n";

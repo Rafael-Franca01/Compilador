@@ -15,7 +15,7 @@ string codigo_funcoes_globais;
 %token TK_MENOR_IGUAL TK_MAIOR_IGUAL TK_IGUAL_IGUAL TK_DIFERENTE
 %token TK_NUM TK_FLOAT TK_TRUE TK_FALSE TK_CHAR TK_STRING
 %token TK_MAIN TK_IF TK_ELSE TK_WHILE TK_FOR TK_DO TK_PRINT TK_SCANF TK_BREAK TK_CONTINUE
-%token TK_SWITCH TK_CASE TK_DEFAULT
+%token TK_SWITCH TK_CASE TK_DEFAULT TK_CLASS TK_PONTO
 %token TK_TIPO_INT TK_TIPO_FLOAT TK_TIPO_CHAR TK_TIPO_BOOL TK_TIPO_STRING TK_ID TK_MAIS_MAIS TK_MENOS_MENOS
 %token TK_TIPO_VOID TK_RETURN
 %token TK_FIM TK_ERROR
@@ -62,7 +62,88 @@ LISTA_DEFS_GLOBAIS : DEF_GLOBAL LISTA_DEFS_GLOBAIS
 
 DEF_GLOBAL : DEFINICAO_FUNCAO { $$ = $1; }
            | DEFINICAO_MAIN  { $$ = $1; }
+           | DEFINICAO_CLASSE { $$ = $1; } // NOVA OPÇÃO
            ;
+
+DEFINICAO_CLASSE : TK_CLASS TK_ID '{'
+                       { estamos_definindo_classe = true; }  // <-- LIGA A FLAG
+                       LISTA_MEMBROS
+                   '}'
+                       { estamos_definindo_classe = false; } // <-- DESLIGA A FLAG
+                   ';'
+                   {
+    string nome_classe = $2.label;
+    if (classes_definidas.count(nome_classe)) {
+        yyerror("Classe '" + nome_classe + "' ja foi definida.");
+    } else {
+        ClassInfo nova_classe;
+        nova_classe.nome = nome_classe;
+        nova_classe.tamanho_total = 0;
+        
+        // Gera a string da struct em C
+        string definicao_struct_c = "\nstruct " + nome_classe + " {\n";
+        
+        // Itera sobre os membros declarados em LISTA_MEMBROS
+for (const auto& membro_decl : $5.args) {
+            MemberInfo novo_membro;
+            novo_membro.nome = membro_decl.nome_original;
+            novo_membro.tipo = membro_decl.tipo;
+            novo_membro.tipo_base = membro_decl.tipo_base;
+            novo_membro.valor_linhas = membro_decl.valor_linhas;
+            novo_membro.valor_colunas = membro_decl.valor_colunas;
+            
+            string declaracao_membro_c;
+            int tamanho_membro_bytes = 0;
+
+            if (membro_decl.tipo == "vetor") {
+                string c_base_type = mapa_tipos_linguagem_para_c.at(membro_decl.tipo_base);
+                declaracao_membro_c = c_base_type + "* " + novo_membro.nome;
+                tamanho_membro_bytes = 8;
+
+            } else if (membro_decl.tipo == "matriz") {
+                string c_base_type = mapa_tipos_linguagem_para_c.at(membro_decl.tipo_base);
+                declaracao_membro_c = c_base_type + "** " + novo_membro.nome;
+                tamanho_membro_bytes = 8;
+
+            } else {
+                string c_type;
+                if (classes_definidas.count(membro_decl.tipo)) {
+                    c_type = "struct " + membro_decl.tipo;
+                } else {
+                    c_type = mapa_tipos_linguagem_para_c.at(membro_decl.tipo);
+                }
+                declaracao_membro_c = c_type + " " + novo_membro.nome;
+                tamanho_membro_bytes = mapa_tamanhos_tipos.at(membro_decl.tipo);
+            }
+
+            novo_membro.offset = nova_classe.tamanho_total;
+            nova_classe.membros.push_back(novo_membro);
+            
+            definicao_struct_c += "\t" + declaracao_membro_c + ";\n";
+            
+            nova_classe.tamanho_total += tamanho_membro_bytes;
+        }
+        
+        definicao_struct_c += "};\n";
+
+        // Armazena a definição da classe e o código C gerado
+        classes_definidas[nome_classe] = nova_classe;
+        codigo_funcoes_globais += definicao_struct_c;
+    }
+    
+    $$.kind = "class_definition";
+    $$.traducao = ""; // A definição não gera código executável, apenas global
+}
+
+LISTA_MEMBROS : DECLARACAO ';' LISTA_MEMBROS
+              {
+                  // Começa com a lista de membros de $2 e adiciona $1 no início
+                  $$ = $3;
+                  $$.args.insert($$.args.begin(), $1);
+              }
+              | /* vazio */ { $$.args.clear(); }
+              ;
+
 
 DEFINICAO_MAIN : TK_TIPO_INT TK_MAIN '(' ')' BLOCO
     {
@@ -122,6 +203,9 @@ DEFINICAO_FUNCAO : TIPO_FUNCAO TK_ID '(' PARAMS ')'
                 c_type = mapa_tipos_linguagem_para_c.at(p->tipo_base) + "*";
             } else if (p->tipo == "matriz") {
                 c_type = mapa_tipos_linguagem_para_c.at(p->tipo_base) + "**";
+            } else if (classes_definidas.count(p->tipo)) { // <-- NOVO CHECK
+                // Se o tipo do parâmetro é uma classe, o tipo C é 'struct NomeDaClasse'
+                c_type = "struct " + p->tipo;
             } else {
                 c_type = mapa_tipos_linguagem_para_c.at(p->tipo);
             }
@@ -134,7 +218,12 @@ DEFINICAO_FUNCAO : TIPO_FUNCAO TK_ID '(' PARAMS ')'
     {
         sair_escopo();
         pilha_funcoes_atuais.pop();
-        string tipo_retorno_c = mapa_tipos_linguagem_para_c.at($6.tipo);
+        string tipo_retorno_c;
+        if (classes_definidas.count($6.tipo)) { // <-- NOVO CHECK
+            tipo_retorno_c = "struct " + $6.tipo;
+        } else {
+            tipo_retorno_c = mapa_tipos_linguagem_para_c.at($6.tipo);
+        }
         string assinatura = tipo_retorno_c + " " + $6.label + "(" + $6.traducao + ")";
         string corpo_funcao_com_vars = $7.traducao;
         codigo_funcoes_globais += "\n" + assinatura + " {\n" + corpo_funcao_com_vars + "}\n\n";
@@ -624,170 +713,233 @@ COD : DECLARACAO
     }
     ;
 
-DECLARACAO : TIPO TK_ID
+DECLARACAO
+    : TIPO TK_ID
     {
-        string original_name = $2.label;
-        string c_code_name = gentempcode();
-        $$.label = c_code_name;
-        $$.tipo = $1.tipo;
-        $$.traducao = "";
-        if (declarar_simbolo(original_name, $1.tipo, c_code_name)) {
-            declaracoes_temp.top()[c_code_name] = $1.tipo;
-            mapa_c_para_original.top()[c_code_name] = original_name;
-            if ($1.tipo == "string") {
-                if (pilha_funcoes_atuais.empty()){
-                    strings_a_liberar.push_back(c_code_name);
-                }
-            }
-        }
-    }
-| TIPO TK_ID '=' E
-    {
-        string original_name = $2.label;
-        string c_code_name = gentempcode();
-        string tipo_declarado = $1.tipo;
-        
+        if (estamos_definindo_classe) {
+            $$.nome_original = $2.label;
+            $$.tipo = $1.tipo;
+            $$.tipo_base = "";
+            $$.traducao = "";
+        } else {
+            string original_name = $2.label;
+            string c_code_name = gentempcode();
+            $$.label = c_code_name;
+            $$.tipo = $1.tipo;
+            $$.traducao = "";
 
-        $$ = $4; // Começa copiando os atributos da expressão da direita
-        $$.label = c_code_name;
-        $$.tipo = tipo_declarado;
-        $$.nome_original = original_name;
+            if (declarar_simbolo(original_name, $1.tipo, c_code_name)) {
+                string tipo_declaracao_c;
+                bool eh_classe = classes_definidas.count($1.tipo);
 
-        if (declarar_simbolo(original_name, tipo_declarado, c_code_name)) {
-            declaracoes_temp.top()[c_code_name] = tipo_declarado;
-            mapa_c_para_original.top()[c_code_name] = original_name;
-
-            if (tipo_declarado == "string") {
-                if ($4.tipo != "string") {
-                    yyerror("Erro Semantico: tipo incompatível na atribuição da declaração de '" + original_name + "'. Esperado 'string', recebido '" + $4.tipo + "'.");
+                if (eh_classe) {
+                    tipo_declaracao_c = "struct " + $1.tipo;
                 } else {
-                    $$.traducao = contar_string(c_code_name, $4);
-                    atualizar_info_string_simbolo(original_name, $4);
-                    if(pilha_funcoes_atuais.empty()){
+                    tipo_declaracao_c = $1.tipo;
+                }
+                
+                declaracoes_temp.top()[c_code_name] = tipo_declaracao_c;
+                mapa_c_para_original.top()[c_code_name] = original_name;
+
+                if (eh_classe) {
+                    auto& classe_info = classes_definidas.at($1.tipo);
+                    for (const auto& membro : classe_info.membros) {
+                        if (membro.tipo == "vetor") {
+                            string c_type_base = mapa_tipos_linguagem_para_c.at(membro.tipo_base);
+                            $$.traducao += "\t" + c_code_name + "." + membro.nome + " = (" + c_type_base + "*) malloc(" + to_string(membro.valor_linhas) + " * sizeof(" + c_type_base + "));\n";
+                        } else if (membro.tipo == "matriz") {
+                             string c_type_base = mapa_tipos_linguagem_para_c.at(membro.tipo_base);
+                             string linhas_str = to_string(membro.valor_linhas);
+                             string colunas_str = to_string(membro.valor_colunas);
+
+                             $$.traducao += "\t" + c_code_name + "." + membro.nome + " = (" + c_type_base + "**) malloc(" + linhas_str + " * sizeof(" + c_type_base + "*));\n";
+
+                             string loop_var = gentempcode();
+                             declaracoes_temp.top()[loop_var] = "int";
+                             string loop_start = genlabel();
+                             string loop_end = genlabel();
+                             string loop_cond = gentempcode();
+                             declaracoes_temp.top()[loop_cond] = "boolean";
+
+                             $$.traducao += "\t" + loop_var + " = 0;\n";
+                             $$.traducao += loop_start + ":\n";
+                             $$.traducao += "\t\t" + loop_cond + " = " + loop_var + " < " + linhas_str + ";\n";
+                             $$.traducao += "\t\tif (!" + loop_cond + ") goto " + loop_end + ";\n";
+                             $$.traducao += "\t\t" + c_code_name + "." + membro.nome + "[" + loop_var + "] = (" + c_type_base + "*) malloc(" + colunas_str + " * sizeof(" + c_type_base + "));\n";
+                             $$.traducao += "\t\t" + loop_var + " = " + loop_var + " + 1;\n";
+                             $$.traducao += "\t\tgoto " + loop_start + ";\n";
+                             $$.traducao += loop_end + ":\n";
+                        }
+                    }
+                }
+
+                if ($1.tipo == "string") {
+                    if (pilha_funcoes_atuais.empty()){
                         strings_a_liberar.push_back(c_code_name);
                     }
                 }
-            } else {
-                atributos valor_para_atribuir = $4;
-                if (tipo_declarado != valor_para_atribuir.tipo) {
-                    if ((tipo_declarado == "float" && valor_para_atribuir.tipo == "int") ||
-                        (tipo_declarado == "int" && valor_para_atribuir.tipo == "float")) {
-                        valor_para_atribuir = converter_implicitamente(valor_para_atribuir, tipo_declarado);
-                    } else {
-                        yyerror("Erro Semantico: tipo incompatível na atribuição da declaração de '" + original_name + "'. Esperado '" + tipo_declarado + "', recebido '" + valor_para_atribuir.tipo + "'.");
-                    }
-                }
-                $$.traducao = valor_para_atribuir.traducao;
-                $$.traducao += "\t" + c_code_name + " = " + valor_para_atribuir.label + ";\n";
             }
         }
     }
-| TIPO TK_ID '[' E ']' '[' E ']'
+
+    // Alternativa 2: Declaração com atribuição (ex: int x = 10;)
+    | TIPO TK_ID '=' E
     {
-        if ($4.tipo != "int" || $7.tipo != "int") {
-            yyerror("Erro Semantico: As dimensoes de uma matriz devem ser inteiras.");
+        if (estamos_definindo_classe) {
+            yyerror("Erro: Inicializacao de membros na declaracao de classe nao e suportada.");
             $$ = atributos();
         } else {
             string original_name = $2.label;
-            if (buscar_simbolo(original_name)) {
-                yyerror("Erro Semantico: Variavel '" + original_name + "' ja declarada.");
+            string c_code_name = gentempcode();
+            string tipo_declarado = $1.tipo;
+            
+            $$ = $4;
+            $$.label = c_code_name;
+            $$.tipo = tipo_declarado;
+            $$.nome_original = original_name;
+
+            if (declarar_simbolo(original_name, tipo_declarado, c_code_name)) {
+                declaracoes_temp.top()[c_code_name] = tipo_declarado;
+                mapa_c_para_original.top()[c_code_name] = original_name;
+
+                if (tipo_declarado == "string") {
+                    if ($4.tipo != "string") {
+                        yyerror("Erro Semantico: tipo incompativel na atribuicao da declaracao de '" + original_name + "'. Esperado 'string', recebido '" + $4.tipo + "'.");
+                    } else {
+                        $$.traducao = contar_string(c_code_name, $4);
+                        atualizar_info_string_simbolo(original_name, $4);
+                        if(pilha_funcoes_atuais.empty()){
+                            strings_a_liberar.push_back(c_code_name);
+                        }
+                    }
+                } else {
+                    atributos valor_para_atribuir = $4;
+                    if (tipo_declarado != valor_para_atribuir.tipo) {
+                        if ((tipo_declarado == "float" && valor_para_atribuir.tipo == "int") || (tipo_declarado == "int" && valor_para_atribuir.tipo == "float")) {
+                            valor_para_atribuir = converter_implicitamente(valor_para_atribuir, tipo_declarado);
+                        } else {
+                            yyerror("Erro Semantico: tipo incompativel na atribuicao da declaracao de '" + original_name + "'. Esperado '" + tipo_declarado + "', recebido '" + valor_para_atribuir.tipo + "'.");
+                        }
+                    }
+                    $$.traducao = valor_para_atribuir.traducao;
+                    $$.traducao += "\t" + c_code_name + " = " + valor_para_atribuir.label + ";\n";
+                }
+            }
+        }
+    }
+
+    // Alternativa 3: Declaração de Vetor (ex: int v[10];)
+    | TIPO TK_ID '[' E ']'
+    {
+        if (estamos_definindo_classe) {
+            if (!$4.eh_literal) {
+                yyerror("Erro: O tamanho de um vetor membro de classe deve ser uma constante inteira.");
+            }
+            $$.nome_original = $2.label;
+            $$.tipo = "vetor";
+            $$.tipo_base = $1.tipo;
+            $$.valor_linhas = $4.valor_literal;
+            $$.traducao = "";
+        } else {
+            if ($4.tipo != "int") {
+                yyerror("Erro Semantico: O tamanho de um vetor deve ser um inteiro.");
                 $$ = atributos();
             } else {
-                
-                string c_type_base;
-                if ($1.tipo == "string") {
-                    c_type_base = "char";
+                string original_name = $2.label;
+                if (buscar_simbolo(original_name)) {
+                    yyerror("Erro Semantico: Variavel '" + original_name + "' ja declarada.");
+                    $$ = atributos();
                 } else {
-                    c_type_base = mapa_tipos_linguagem_para_c.at($1.tipo);
+                    string c_name = gentempcode();
+                    string c_type = mapa_tipos_linguagem_para_c.at($1.tipo);
+                    
+                    atributos vet_attrs;
+                    vet_attrs.label = c_name;
+                    vet_attrs.tipo = "vetor";
+                    vet_attrs.tipo_base = $1.tipo;
+                    vet_attrs.eh_vetor = true;
+                    vet_attrs.eh_endereco = false;
+                    pilha_tabelas_simbolos.back()[original_name] = vet_attrs;
+                    
+                    string c_type_base = mapa_tipos_linguagem_para_c.at($1.tipo);
+                    declaracoes_temp.top()[c_name] = c_type_base + "*";
+                    mapa_c_para_original.top()[c_name] = original_name;
+
+                    $$.traducao = $4.traducao;
+                    $$.traducao += "\t" + c_name + " = (" + c_type + "*) malloc(" + $4.label + " * " + "sizeof(" + c_type + ")" + ");\n";
+                    
+                    strings_a_liberar.push_back(c_name);
                 }
-
-                string c_name = genuniquename();
-                atributos mat_attrs;
-                mat_attrs.label = c_name;
-                mat_attrs.tipo = "matriz";
-                mat_attrs.tipo_base = ($1.tipo == "string") ? "char" : $1.tipo;
-                mat_attrs.eh_vetor = true; 
-                mat_attrs.label_linhas = $4.label;
-                mat_attrs.label_colunas = $7.label;
-
-                if ($4.eh_literal) {
-                    mat_attrs.valor_linhas = $4.valor_literal;
-                } else {
-                    mat_attrs.valor_linhas = -1; 
-                }
-
-                if ($7.eh_literal) {
-                    mat_attrs.valor_colunas = $7.valor_literal;
-                } else {
-                    mat_attrs.valor_colunas = -1; 
-                }
-
-                pilha_tabelas_simbolos.back()[original_name] = mat_attrs;
-                
-                string temp_loop_var = genuniquename();
-                string temp_condicao = genuniquename();
-                string label_inicio_loop = genlabel();
-                string label_fim_loop = genlabel();
-                string temp_addr_ptr = genuniquename();
-                string temp_malloc_result = genuniquename();
-
-                declaracoes_temp.top()[c_name] = c_type_base + "**";
-                mapa_c_para_original.top()[c_name] = original_name;
-                declaracoes_temp.top()[temp_loop_var] = "int";
-                declaracoes_temp.top()[temp_condicao] = "boolean";
-                declaracoes_temp.top()[temp_addr_ptr] = c_type_base + "**";
-                declaracoes_temp.top()[temp_malloc_result] = c_type_base + "*";
-
-                $$.traducao = $4.traducao + $7.traducao; 
-                $$.traducao += "\t" + c_name + " = (" + c_type_base + "**) malloc(" + $4.label + " * sizeof(" + c_type_base + "*));\n";
-                $$.traducao += "\t" + temp_loop_var + " = 0;\n";
-                $$.traducao += label_inicio_loop + ":\n";
-                $$.traducao += "\t\t" + temp_condicao + " = " + temp_loop_var + " < " + $4.label + ";\n";
-                $$.traducao += "\t\tif (!" + temp_condicao + ") goto " + label_fim_loop + ";\n";
-                $$.traducao += "\t\t" + temp_addr_ptr + " = " + c_name + " + " + temp_loop_var + ";\n";
-                $$.traducao += "\t\t" + temp_malloc_result + " = (" + c_type_base + "*) malloc(" + $7.label + " * sizeof(" + c_type_base + "));\n";
-                $$.traducao += "\t\t*" + temp_addr_ptr + " = " + temp_malloc_result + ";\n";
-                $$.traducao += "\t\t" + temp_loop_var + " = " + temp_loop_var + " + 1;\n";
-                $$.traducao += "\t\tgoto " + label_inicio_loop + ";\n";
-                $$.traducao += label_fim_loop + ":\n";
-
-                matrizes_a_liberar.push_back(make_pair(c_name, $4.label));
             }
         }
     }
-| TIPO TK_ID '[' E ']'
-    {
-        if ($4.tipo != "int") {
-            yyerror("Erro Semantico: O tamanho de um vetor deve ser um inteiro.");
-            $$ = atributos();
-        } else {
-            string original_name = $2.label;
-            if (buscar_simbolo(original_name)) {
-                 yyerror("Erro Semantico: Variavel '" + original_name + "' ja declarada.");
-                 $$ = atributos();
-            } else {
-                string c_name = gentempcode();
-                string c_type = mapa_tipos_linguagem_para_c.at($1.tipo);
-                int tamanho_do_tipo = mapa_tamanhos_tipos.at($1.tipo);
-                // Adiciona na tabela de símbolos
-                atributos vet_attrs;
-                vet_attrs.label = c_name;
-                vet_attrs.tipo = "vetor";
-                vet_attrs.tipo_base = $1.tipo;
-                vet_attrs.eh_vetor = true;
-                vet_attrs.eh_endereco = false;
-                pilha_tabelas_simbolos.back()[original_name] = vet_attrs;
-                
-                // Gera o código de declaração (ponteiro) e alocação (malloc)
-                string c_type_base = mapa_tipos_linguagem_para_c.at($1.tipo);
-                declaracoes_temp.top()[c_name] = c_type_base + "*";
-                mapa_c_para_original.top()[c_name] = original_name;
 
-                $$.traducao = $4.traducao; // Código da expressão do tamanho
-                $$.traducao += "\t" + c_name + " = (" + c_type + "*) malloc(" + $4.label + " * " + "sizeof(" + c_type + ")" + ");\n";
-                
-                // Registra para liberar a memória depois
-                strings_a_liberar.push_back(c_name);
+    // Alternativa 4: Declaração de Matriz (ex: int m[2][3];)
+    | TIPO TK_ID '[' E ']' '[' E ']'
+    {
+        if (estamos_definindo_classe) {
+            if (!$4.eh_literal || !$7.eh_literal) {
+                yyerror("Erro: As dimensoes de uma matriz membro de classe devem ser constantes inteiras.");
+            }
+            $$.nome_original = $2.label;
+            $$.tipo = "matriz";
+            $$.tipo_base = $1.tipo;
+            $$.valor_linhas = $4.valor_literal;
+            $$.valor_colunas = $7.valor_literal;
+            $$.traducao = "";
+        } else {
+            if ($4.tipo != "int" || $7.tipo != "int") {
+                yyerror("Erro Semantico: As dimensoes de uma matriz devem ser inteiras.");
+                $$ = atributos();
+            } else {
+                string original_name = $2.label;
+                if (buscar_simbolo(original_name)) {
+                    yyerror("Erro Semantico: Variavel '" + original_name + "' ja declarada.");
+                    $$ = atributos();
+                } else {
+                    string c_type_base = mapa_tipos_linguagem_para_c.at($1.tipo);
+                    string c_name = genuniquename();
+                    
+                    atributos mat_attrs;
+                    mat_attrs.label = c_name;
+                    mat_attrs.tipo = "matriz";
+                    mat_attrs.tipo_base = $1.tipo;
+                    mat_attrs.eh_vetor = true;
+                    mat_attrs.label_linhas = $4.label;
+                    mat_attrs.label_colunas = $7.label;
+                    mat_attrs.valor_linhas = $4.eh_literal ? $4.valor_literal : -1;
+                    mat_attrs.valor_colunas = $7.eh_literal ? $7.valor_literal : -1;
+                    pilha_tabelas_simbolos.back()[original_name] = mat_attrs;
+                    
+                    string temp_loop_var = genuniquename();
+                    string temp_condicao = genuniquename();
+                    string label_inicio_loop = genlabel();
+                    string label_fim_loop = genlabel();
+                    string temp_addr_ptr = genuniquename();
+                    string temp_malloc_result = genuniquename();
+
+                    declaracoes_temp.top()[c_name] = c_type_base + "**";
+                    mapa_c_para_original.top()[c_name] = original_name;
+                    declaracoes_temp.top()[temp_loop_var] = "int";
+                    declaracoes_temp.top()[temp_condicao] = "boolean";
+                    declaracoes_temp.top()[temp_addr_ptr] = c_type_base + "**";
+                    declaracoes_temp.top()[temp_malloc_result] = c_type_base + "*";
+
+                    $$.traducao = $4.traducao + $7.traducao;
+                    $$.traducao += "\t" + c_name + " = (" + c_type_base + "**) malloc(" + $4.label + " * sizeof(" + c_type_base + "*));\n";
+                    $$.traducao += "\t" + temp_loop_var + " = 0;\n";
+                    $$.traducao += label_inicio_loop + ":\n";
+                    $$.traducao += "\t\t" + temp_condicao + " = " + temp_loop_var + " < " + $4.label + ";\n";
+                    $$.traducao += "\t\tif (!" + temp_condicao + ") goto " + label_fim_loop + ";\n";
+                    $$.traducao += "\t\t" + temp_addr_ptr + " = " + c_name + " + " + temp_loop_var + ";\n";
+                    $$.traducao += "\t\t" + temp_malloc_result + " = (" + c_type_base + "*) malloc(" + $7.label + " * sizeof(" + c_type_base + "));\n";
+                    $$.traducao += "\t\t*" + temp_addr_ptr + " = " + temp_malloc_result + ";\n";
+                    $$.traducao += "\t\t" + temp_loop_var + " = " + temp_loop_var + " + 1;\n";
+                    $$.traducao += "\t\tgoto " + label_inicio_loop + ";\n";
+                    $$.traducao += label_fim_loop + ":\n";
+
+                    matrizes_a_liberar.push_back(make_pair(c_name, $4.label));
+                }
             }
         }
     }
@@ -798,79 +950,80 @@ TIPO : TK_TIPO_INT { $$.tipo = "int"; }
     | TK_TIPO_BOOL { $$.tipo = "boolean"; }
     | TK_TIPO_CHAR { $$.tipo = "char"; }
     | TK_TIPO_STRING { $$.tipo = "string"; }
-    ;
+    | TK_ID           {
+                           // Verifica se o ID é um tipo de classe que já definimos
+                           if (classes_definidas.count($1.label)) {
+                               $$.tipo = $1.label; // O tipo é o próprio nome da classe
+                           } else {
+                               yyerror("Tipo ou classe '" + $1.label + "' nao foi definido.");
+                               $$.tipo = "error";
+                           }
+                       }
+     ;
 
 E : POSTFIX_E '=' E
-    {
-        atributos lhs = $1;
-        atributos rhs = $3; // Para strings, não desreferenciamos ainda
+{
+    atributos lhs = $1;
+    atributos rhs = $3;
 
-        if (lhs.tipo == "vetor" && lhs.tipo_base == "char" && rhs.tipo == "string") {
-            string dest_ptr = gentempcode();
-            declaracoes_temp.top()[dest_ptr] = "char*"; // O ponteiro da linha é char*
+    // Caso 1: Atribuição a uma string
+    if (lhs.tipo == "string" && lhs.eh_endereco) {
+        rhs = desreferenciar_se_necessario(rhs);
+        if (rhs.tipo != "string") {
+            yyerror("Erro Semantico: tipo incompativel para atribuir a string.");
+            $$ = atributos();
+        } else {
+            // Cria um novo temporário para a string alocada
+            string temp_new_str = gentempcode();
+            declaracoes_temp.top()[temp_new_str] = "char*"; // O tipo em C é char*
             
-            $$.traducao = lhs.traducao + rhs.traducao; // Junta códigos anteriores
-            $$.traducao += "\t" + dest_ptr + " = *" + lhs.label + ";\n";
-
-            $$.traducao += "\tstrcpy(" + dest_ptr + ", " + rhs.label + ");\n";
+            // Gera código para alocar memória e copiar o conteúdo da string
+            $$.traducao = contar_string(temp_new_str, rhs); 
+            // Adiciona o código para obter o endereço do LHS (ex: de joao.nome)
+            $$.traducao += lhs.traducao;
+            // Atribui o ponteiro da nova string alocada ao membro da struct
+            $$.traducao += "\t*" + lhs.label + " = " + temp_new_str + ";\n";
             
-            $$.label = dest_ptr;
-            $$.tipo = "string"; // O resultado da expressão é a própria string
-        }
-        else if (lhs.tipo == "string" && !lhs.eh_endereco) { // caso: str s; s = "pedro";
-            rhs = desreferenciar_se_necessario(rhs);
-            if (rhs.tipo != "string") {
-                yyerror("Erro Semantico: tipos incompatíveis para atribuir a string '" + lhs.nome_original + "'.");
-                $$.tipo = "error";
-            } else {
-                $$.traducao = rhs.traducao;
-                string temp_cond = gentempcode();
-                declaracoes_temp.top()[temp_cond] = "int";
-                string label_skip_free = genlabel();
-                $$.traducao += "\t" + temp_cond + " = " + lhs.label + " == NULL;\n";
-                $$.traducao += "\tif (" + temp_cond + ") goto " + label_skip_free + ";\n";
-                $$.traducao += "\tfree(" + lhs.label + ");\n";
-                $$.traducao += label_skip_free + ":\n";
-                string codigo_copia = contar_string(lhs.label, rhs);
-                $$.traducao += codigo_copia;
-                $$.label = lhs.label;
-                $$.tipo = lhs.tipo;
-                atualizar_info_string_simbolo(lhs.nome_original, rhs);
-            }
-        }
-        else { // Lógica para outros tipos (int, float, a[i][j], etc.)
-            rhs = desreferenciar_se_necessario(rhs);
-            if (lhs.tipo != rhs.tipo) {
-                rhs = converter_implicitamente(rhs, lhs.tipo);
-            }
-            $$.traducao = lhs.traducao + rhs.traducao;
-
-            if (lhs.eh_endereco) {
-                $$.traducao += "\t*" + lhs.label + " = " + rhs.label + ";\n";
-            } else {
-                $$.traducao += "\t" + lhs.label + " = " + rhs.label + ";\n";
-            }
-            $$.label = lhs.label;
+            $$.label = lhs.label; 
             $$.tipo = lhs.tipo;
         }
+    } 
+    // Caso 2: Outras atribuições (int, float, etc.)
+    else { 
+        rhs = desreferenciar_se_necessario(rhs);
+        if (lhs.tipo != rhs.tipo) {
+            if ((lhs.tipo == "float" && rhs.tipo == "int") || (lhs.tipo == "int" && rhs.tipo == "float")) {
+                 rhs = converter_implicitamente(rhs, lhs.tipo);
+            } else {
+                yyerror("Erro Semantico: tipos incompativeis para atribuicao.");
+                $$ = atributos();
+            }
+        }
+        $$.traducao = lhs.traducao + rhs.traducao;
+
+        if (lhs.eh_endereco) {
+            $$.traducao += "\t*" + lhs.label + " = " + rhs.label + ";\n";
+        } else {
+            $$.traducao += "\t" + lhs.label + " = " + rhs.label + ";\n";
+        }
+        $$.label = rhs.label;
+        $$.tipo = rhs.tipo;
     }
-  | E '+' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "+", "+", desreferenciar_se_necessario($3)); }
-  | E '-' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "-", "-", desreferenciar_se_necessario($3)); }
-  | E '*' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "*", "*", desreferenciar_se_necessario($3)); }
-  | E '/' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "/", "/", desreferenciar_se_necessario($3)); }
-  | E '<' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "<", "<", desreferenciar_se_necessario($3)); }
-  | E '>' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), ">", ">", desreferenciar_se_necessario($3)); }
-  | E '&' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "&", "&&", desreferenciar_se_necessario($3)); }
-  | E '|' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "|", "||", desreferenciar_se_necessario($3)); }
-  | E TK_MAIOR_IGUAL E   { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), ">=", ">=", desreferenciar_se_necessario($3)); }
-  | E TK_MENOR_IGUAL E   { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "<=", "<=", desreferenciar_se_necessario($3)); }
-  | E TK_DIFERENTE E     { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "!=", "!=", desreferenciar_se_necessario($3)); }
-  | E TK_IGUAL_IGUAL E   { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "==", "==", desreferenciar_se_necessario($3)); }
-  | UNARY_E
-    {
-        $$ = $1;
-    }
-    ;
+}
+| E '+' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "+", "+", desreferenciar_se_necessario($3)); }
+| E '-' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "-", "-", desreferenciar_se_necessario($3)); }
+| E '*' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "*", "*", desreferenciar_se_necessario($3)); }
+| E '/' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "/", "/", desreferenciar_se_necessario($3)); }
+| E '<' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "<", "<", desreferenciar_se_necessario($3)); }
+| E '>' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), ">", ">", desreferenciar_se_necessario($3)); }
+| E '&' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "&", "&&", desreferenciar_se_necessario($3)); }
+| E '|' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "|", "||", desreferenciar_se_necessario($3)); }
+| E TK_MAIOR_IGUAL E   { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), ">=", ">=", desreferenciar_se_necessario($3)); }
+| E TK_MENOR_IGUAL E   { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "<=", "<=", desreferenciar_se_necessario($3)); }
+| E TK_DIFERENTE E     { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "!=", "!=", desreferenciar_se_necessario($3)); }
+| E TK_IGUAL_IGUAL E   { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "==", "==", desreferenciar_se_necessario($3)); }
+| UNARY_E              { $$ = $1; }
+;
 
 UNARY_E : TK_MAIS_MAIS UNARY_E  { $$ = criar_expressao_unaria($2, "+"); }
         | TK_MENOS_MENOS UNARY_E { $$ = criar_expressao_unaria($2, "-"); }
@@ -999,65 +1152,105 @@ POSTFIX_E : POSTFIX_E TK_MAIS_MAIS
                 
                 $$.nome_original = $1.label;
             }
-          | POSTFIX_E '[' E ']'
-            {
-                atributos base = $1;
-                atributos indice = desreferenciar_se_necessario($3);
+    | POSTFIX_E '[' E ']'
+    {
+        atributos base = $1;
+        atributos indice = desreferenciar_se_necessario($3);
 
-                if (base.tipo != "vetor" && base.tipo != "matriz") {
-                    yyerror("Erro Semantico: Variavel '" + base.nome_original + "' nao e um vetor ou matriz.");
-                    $$ = atributos();
-                } else if (indice.tipo != "int") {
-                    yyerror("Erro Semantico: Indice de vetor ou matriz deve ser um inteiro.");
-                    $$ = atributos();
-                } else {
-                    string base_ptr_label;
-                    string base_ptr_c_type; // O tipo C que precisamos descobrir
+        if ((base.tipo != "vetor" && base.tipo != "matriz") && !(base.eh_endereco)) {
+            yyerror("Erro Semantico: Variavel '" + base.nome_original + "' nao e um vetor ou matriz.");
+            $$ = atributos();
+        } else if (indice.tipo != "int") {
+            yyerror("Erro Semantico: Indice de vetor ou matriz deve ser um inteiro.");
+            $$ = atributos();
+        } else {
+            string base_ptr_label = base.label;
+            $$.traducao = base.traducao + indice.traducao;
 
-                    $$.traducao = base.traducao + indice.traducao;
+            if (base.eh_endereco) {
+                string actual_ptr = gentempcode();
+                string c_type_of_actual_ptr;
 
-                    if (base.eh_endereco) { // Caso de acessos múltiplos, como a[i][j]
-                        base_ptr_label = gentempcode(); 
-                        string c_type_da_linha = mapa_tipos_linguagem_para_c.at(base.tipo_base) + "*";
-                        declaracoes_temp.top()[base_ptr_label] = c_type_da_linha; 
-                        $$.traducao += "\t" + base_ptr_label + " = *" + base.label + ";\n";
-                        base_ptr_c_type = c_type_da_linha;
-
-                    } else { // Caso do primeiro acesso, como v1[0]
-                        base_ptr_label = base.label;
-
-                        // --- LÓGICA CORRIGIDA ---
-                        // Não procuramos mais na lista de declarações.
-                        // Construímos o tipo C a partir da informação semântica que já temos!
-                        if (base.tipo == "vetor") {
-                            base_ptr_c_type = mapa_tipos_linguagem_para_c.at(base.tipo_base) + "*";
-                        } else if (base.tipo == "matriz") {
-                            base_ptr_c_type = mapa_tipos_linguagem_para_c.at(base.tipo_base) + "**";
-                        }
-                        // --- FIM DA CORREÇÃO ---
-                    }
-
-                    string addr_temp = genuniquename();
-                    declaracoes_temp.top()[addr_temp] = base_ptr_c_type;
-                    ordem_declaracoes.top().push_back(addr_temp);
-                    
-                    $$.traducao += "\t" + addr_temp + " = " + base_ptr_label + " + " + indice.label + ";\n";
-
-                    $$.label = addr_temp;
-                    $$.eh_endereco = true;
-                    $$.nome_original = base.nome_original;
-
-                    if(base.tipo == "matriz") {
-                        $$.tipo = "vetor";
-                        $$.eh_vetor = true;
-                        $$.tipo_base = base.tipo_base;
-                    } else if (base.tipo == "vetor") {
-                        $$.tipo = base.tipo_base;
-                        $$.eh_vetor = false;
-                        $$.tipo_base = "";
-                    }
+                if (base.tipo == "vetor") {
+                    c_type_of_actual_ptr = mapa_tipos_linguagem_para_c.at(base.tipo_base) + "*";
+                } else { // matriz
+                    c_type_of_actual_ptr = mapa_tipos_linguagem_para_c.at(base.tipo_base) + "**";
                 }
+                
+                declaracoes_temp.top()[actual_ptr] = c_type_of_actual_ptr;
+                $$.traducao += "\t" + actual_ptr + " = *" + base.label + ";\n";
+                base_ptr_label = actual_ptr;
             }
+
+            // A linha abaixo usa gentempcode() para criar E REGISTRAR a variável
+            // temporária que armazena o endereço do elemento.
+            string addr_temp = gentempcode(); 
+            string addr_temp_c_type = (base.tipo == "matriz") 
+                                    ? (mapa_tipos_linguagem_para_c.at(base.tipo_base) + "**") 
+                                    : (mapa_tipos_linguagem_para_c.at(base.tipo_base) + "*");
+            declaracoes_temp.top()[addr_temp] = addr_temp_c_type;
+            
+            $$.traducao += "\t" + addr_temp + " = " + base_ptr_label + " + " + indice.label + ";\n";
+
+            $$.label = addr_temp;
+            $$.eh_endereco = true;
+            $$.nome_original = base.nome_original;
+
+            if(base.tipo == "matriz") {
+                $$.tipo = "vetor";
+                $$.tipo_base = base.tipo_base;
+            } else if (base.tipo == "vetor") {
+                $$.tipo = base.tipo_base;
+                $$.tipo_base = "";
+            }
+        }
+    }
+          | POSTFIX_E TK_PONTO TK_ID
+    {
+        atributos obj = desreferenciar_se_necessario($1);
+        string nome_membro = $3.label;
+
+        auto it_classe = classes_definidas.find(obj.tipo);
+        if (it_classe == classes_definidas.end()) {
+            yyerror("Erro Semantico: Variavel '" + obj.nome_original + "' nao e um objeto de classe.");
+            $$ = atributos();
+        } else {
+            auto& classe_info = it_classe->second;
+            MemberInfo* membro_info = nullptr;
+            for(auto& m : classe_info.membros) { if (m.nome == nome_membro) { membro_info = &m; break; } }
+
+            if (membro_info == nullptr) {
+                yyerror("Erro Semantico: Classe '" + obj.tipo + "' nao tem um membro chamado '" + nome_membro + "'.");
+                $$ = atributos();
+            } else {
+                $$.traducao = obj.traducao;
+                $$.nome_original = obj.nome_original + "." + nome_membro;
+                $$.tipo = membro_info->tipo;
+                $$.tipo_base = membro_info->tipo_base;
+
+                string addr_temp = gentempcode();
+                string member_c_type;
+                
+                if (membro_info->tipo == "vetor") {
+                    member_c_type = mapa_tipos_linguagem_para_c.at(membro_info->tipo_base) + "*";
+                } else if (membro_info->tipo == "matriz") {
+                    member_c_type = mapa_tipos_linguagem_para_c.at(membro_info->tipo_base) + "**";
+                } else if (classes_definidas.count(membro_info->tipo)) {
+                    member_c_type = "struct " + membro_info->tipo;
+                } else {
+                    member_c_type = mapa_tipos_linguagem_para_c.at(membro_info->tipo);
+                }
+
+                string temp_addr_type = member_c_type + "*";
+                declaracoes_temp.top()[addr_temp] = temp_addr_type;
+                
+                $$.traducao += "\t" + addr_temp + " = &" + obj.label + "." + nome_membro + ";\n";
+
+                $$.label = addr_temp;
+                $$.eh_endereco = true;
+            }
+        }
+    }
           | TK_NUM
             {
                 $$.label = gentempcode();
@@ -1102,6 +1295,7 @@ POSTFIX_E : POSTFIX_E TK_MAIS_MAIS
                 $$.tipo = "boolean";
                 declaracoes_temp.top()[$$.label] = $$.tipo;
             }
+            
           ;
 
 ARGS : LISTA_ARGS { $$ = $1; }

@@ -25,6 +25,8 @@ ID          {LETRA}({LETRA}|{DIGITO})*
 {DELIM}     {}
 "main"      { return TK_MAIN; }
 "if"        { return TK_IF; }
+"cls"       {return TK_CLASS; }
+"."         {return TK_PONTO; }
 "helcio"    { return TK_ELSE; }
 "swc"       { return TK_SWITCH; }
 "cs"        { return TK_CASE; }

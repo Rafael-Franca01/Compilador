@@ -1,14 +1,18 @@
-int teste(int a, int b){
-	int v;
-	v = a + b;
-	prt(v);
-}
+cls Agenda {
+  str compromissos[2][2]; 
+};
 
-int main(){
-	int a;
-	int b;
-	int c;
-	a = 1;
-	b = 1;
-	teste(a, b);
+int main() {
+  Agenda semana;
+
+  
+  semana.compromissos[0][0] = "skibidi";
+  semana.compromissos[0][1] = "putrefe";
+
+ 
+  semana.compromissos[1][0] = "mijo";
+  semana.compromissos[1][1] = "bosta";
+
+  prt("Compromisso da tarde: ");
+  prt(semana.compromissos[1][0]); 
 }
