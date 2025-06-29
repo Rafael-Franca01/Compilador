@@ -1,18 +1,30 @@
-cls Agenda {
-  str compromissos[2][2]; 
+cls PacoteMatriz {
+  int m[2][2];
 };
 
 int main() {
-  Agenda semana;
+    PacoteMatriz A;
+    PacoteMatriz B;
+    PacoteMatriz Soma;
+    PacoteMatriz Sub;
+    PacoteMatriz Mult;
 
-  
-  semana.compromissos[0][0] = "skibidi";
-  semana.compromissos[0][1] = "putrefe";
+    A.m[0][0] = 1; A.m[0][1] = 2;
+    A.m[1][0] = 3; A.m[1][1] = 4;
 
- 
-  semana.compromissos[1][0] = "mijo";
-  semana.compromissos[1][1] = "bosta";
+    B.m[0][0] = 5; B.m[0][1] = 6;
+    B.m[1][0] = 7; B.m[1][1] = 8;
 
-  prt("Compromisso da tarde: ");
-  prt(semana.compromissos[1][0]); 
+    Soma.m = A.m + B.m;
+    Sub.m = A.m - B.m;
+    Mult.m = A.m * B.m;
+
+    prt("Soma (Soma.m[1][1]): ");
+    prt(Soma.m[1][1]); 
+
+    prt("\nSubtracao (Sub.m[0][1]): ");
+    prt(Sub.m[0][1]); 
+
+    prt("\nMultiplicacao (Mult.m[1][0]): ");
+    prt(Mult.m[1][0]);
 }

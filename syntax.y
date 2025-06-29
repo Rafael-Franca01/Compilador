@@ -145,21 +145,36 @@ LISTA_MEMBROS : DECLARACAO ';' LISTA_MEMBROS
               ;
 
 
-DEFINICAO_MAIN : TK_TIPO_INT TK_MAIN '(' ')' BLOCO
+DEFINICAO_MAIN : TK_TIPO_INT TK_MAIN '(' ')' 
+    { entrar_escopo(); } // Entra no escopo da main
+    '{' COMANDOS '}'
     {
-        string codigo;
-        codigo += "int main(void) {\n";
-        string codigo_final_de_liberacao = gerar_codigo_de_liberacao();
+        // 1. Pega o corpo de código gerado para os comandos da main.
+        string codigo_comandos = $7.traducao;
         
-        // A geração de declarações agora é feita DENTRO do bloco $5
-        codigo += $5.traducao; 
+        // 2. Gera o código de liberação. Isso adiciona os temporários
+        //    necessários (t164, etc.) à lista de declarações do escopo atual.
+        string codigo_liberacao = gerar_codigo_de_liberacao();
         
-        codigo += codigo_final_de_liberacao;
-        codigo += "\treturn 0;\n}\n";
-        $$.traducao = codigo;
+        // 3. AGORA, gera TODAS as declarações para o escopo da main.
+        //    Isso incluirá as variáveis do corpo E as dos laços de free.
+        string codigo_declaracoes = gerar_codigo_declaracoes();
+        
+        // 4. Sai do escopo da main, pois já coletamos tudo que precisávamos.
+        sair_escopo();
+
+        // 5. Monta a string final da função main na ordem correta.
+        string codigo_final;
+        codigo_final += "int main(void) {\n";
+        codigo_final += codigo_declaracoes;  // Bloco de declarações no topo
+        codigo_final += codigo_comandos;     // Corpo da função
+        codigo_final += codigo_liberacao;    // Código de liberação no final
+        codigo_final += "\treturn 0;\n}\n";
+        
+        $$.traducao = codigo_final;
         $$.kind = "main_definition";
     }
-    ;
+;
 
 DEFINICAO_FUNCAO : TIPO_FUNCAO TK_ID '(' PARAMS ')'
     {
@@ -1227,7 +1242,24 @@ POSTFIX_E : POSTFIX_E TK_MAIS_MAIS
                 $$.nome_original = obj.nome_original + "." + nome_membro;
                 $$.tipo = membro_info->tipo;
                 $$.tipo_base = membro_info->tipo_base;
+                
+                // Carrega as dimensões LITERAIS (ex: 2, 2)
+                $$.valor_linhas = membro_info->valor_linhas;
+                $$.valor_colunas = membro_info->valor_colunas;
 
+                // Cria temporárias para as dimensões para usar nas chamadas de função C
+                string linhas_label = gentempcode();
+                declaracoes_temp.top()[linhas_label] = "int";
+                $$.traducao += "\t" + linhas_label + " = " + to_string(membro_info->valor_linhas) + ";\n";
+                $$.label_linhas = linhas_label;
+
+                string colunas_label = gentempcode();
+                declaracoes_temp.top()[colunas_label] = "int";
+                $$.traducao += "\t" + colunas_label + " = " + to_string(membro_info->valor_colunas) + ";\n";
+                $$.label_colunas = colunas_label;
+
+                // O resultado da expressão 'obj.membro' é o seu endereço de memória.
+                // Isso permite que ele seja usado tanto para leitura quanto para escrita.
                 string addr_temp = gentempcode();
                 string member_c_type;
                 

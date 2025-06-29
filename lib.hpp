@@ -143,32 +143,39 @@ atributos desreferenciar_se_necessario(atributos op) {
     }
 
     atributos res;
-    string c_type_do_valor; // Variável para guardar o tipo C correto do valor.
+    string c_type_do_valor;
 
-    // --- LÓGICA CORRIGIDA AQUI ---
-    // Precisamos determinar qual o tipo C do valor que obteremos com o '*'.
+    // Determina o tipo C do VALOR que será obtido.
     if (op.tipo == "vetor") {
-        // Se a expressão é um endereço para um "vetor" (como em a[0]),
-        // o valor real que pegamos é um PONTEIRO para o tipo base (ex: char*).
         c_type_do_valor = mapa_tipos_linguagem_para_c.at(op.tipo_base) + "*";
-    } else {
-        // Para todos os outros casos (endereço de int, float, char),
-        // o tipo do valor é o mesmo tipo da expressão.
-        c_type_do_valor = op.tipo;
+    } else if (op.tipo == "matriz") {
+        c_type_do_valor = mapa_tipos_linguagem_para_c.at(op.tipo_base) + "**";
+    }
+    else {
+        c_type_do_valor = mapa_tipos_linguagem_para_c.at(op.tipo);
     }
 
-    res.tipo = c_type_do_valor;
+    // --- INÍCIO DA CORREÇÃO ---
+    // O tipo LÓGICO não muda. Uma matriz continua sendo uma "matriz".
+    res.tipo = op.tipo;
     res.label = gentempcode();
     
-    // Registra o temporário para declaração com o tipo C correto!
-    declaracoes_temp.top()[res.label] = res.tipo;
+    // A declaração C do temporário usa o tipo C correto (ex: int**).
+    declaracoes_temp.top()[res.label] = c_type_do_valor;
     
-    // Gera o código da desreferência
+    // Gera o código da desreferência.
     res.traducao = op.traducao + "\t" + res.label + " = *" + op.label + ";\n";
     
-    // O resultado agora é um valor, não mais um endereço.
+    // O resultado agora é um VALOR (r-value), não mais um endereço.
     res.eh_endereco = false; 
-    res.eh_vetor = (res.tipo.back() == '*'); // É um vetor se seu novo tipo C ainda for um ponteiro.
+
+    // Copia as informações de dimensão para que não se percam.
+    res.valor_linhas = op.valor_linhas;
+    res.valor_colunas = op.valor_colunas;
+    res.label_linhas = op.label_linhas;
+    res.label_colunas = op.label_colunas;
+    res.tipo_base = op.tipo_base;
+    // --- FIM DA CORREÇÃO ---
 
     return res;
 }
