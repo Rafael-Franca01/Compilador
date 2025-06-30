@@ -1,14 +1,23 @@
+// --- Teste 16: Função chamando outra função ---
 
-
-int main() {
-  flt a = -750.45;
-  flt b = -a;
-
-  prt(b);
-
-  int c = -750;
-  int d = -c;
-
-  prt(d);
+int dobrar(int x) {
+    rtn x * 2;
 }
 
+int calcularDobroMaisB(int a, int b) {
+    int dobro_de_a;
+    dobro_de_a = dobrar(a); // Chamada para a função auxiliar
+    rtn dobro_de_a + b;
+}
+
+int main() {
+    int resultado_final;
+    prt("--- Teste de Chamada Aninhada ---\n");
+    prt("Calculando 2*7 + 3...\n");
+
+    resultado_final = calcularDobroMaisB(7, 3);
+
+    prt("Resultado final:\n");
+    prt(resultado_final); // Esperado: 17 (dobrar(7)=14, 14+3=17)
+    prt("\n");
+}

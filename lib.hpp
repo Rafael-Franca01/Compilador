@@ -18,6 +18,8 @@ bool funcao_add_matriz_float_gerada = false;
 bool funcao_sub_matriz_float_gerada = false;
 bool encontrou_retorno_na_funcao_atual = false;
 
+
+
 vector<string> strings_a_liberar_no_comando;
 string codigo_funcoes_auxiliares;
 bool funcao_strlen_gerada = false;
@@ -55,6 +57,7 @@ struct atributos
     string label_linhas;
     string label_colunas;
 
+    
     int valor_literal;  // Guarda o valor de um número, se for literal
     bool eh_literal;    // Sinaliza se a expressão é um literal conhecido
     int valor_linhas;   // Guarda o valor literal das linhas da matriz
@@ -64,6 +67,24 @@ struct atributos
     vector<ParamInfo> params; // Guarda a lista de parâmetros de uma função
     vector<atributos> args;   // Guarda a lista de argumentos em uma chamada de função
 };
+
+struct MemberInfo {
+	string nome;
+	string tipo;
+	string tipo_base;
+	int offset;
+	int valor_linhas;
+	int valor_colunas;
+};
+
+struct ClassInfo {
+	string nome;
+	vector<MemberInfo> membros;
+	int tamanho_total;
+};
+
+map<string, ClassInfo> classes_definidas;
+bool estamos_definindo_classe = false;
 
 stack<atributos> pilha_funcoes_atuais;
 vector<map<string, atributos>> pilha_tabelas_simbolos;
@@ -115,41 +136,83 @@ string genuniquename() {
 }
 
 atributos desreferenciar_se_necessario(atributos op) {
-    // Se não for um endereço, não há nada a fazer.
-    if (!op.eh_endereco) {
-        return op; 
-    }
+	// Se não for um endereço de memória, não há o que fazer.
+	if (!op.eh_endereco) {
+		return op;
+	}
 
-    atributos res;
-    string c_type_do_valor; // Variável para guardar o tipo C correto do valor.
+	atributos res;
+	// Copia TODOS os atributos da operação original para o resultado.
+	// Isso garante que informações como nome, tipo, e dimensões sejam preservadas.
+	res = op;
 
-    // --- LÓGICA CORRIGIDA AQUI ---
-    // Precisamos determinar qual o tipo C do valor que obteremos com o '*'.
-    if (op.tipo == "vetor") {
-        // Se a expressão é um endereço para um "vetor" (como em a[0]),
-        // o valor real que pegamos é um PONTEIRO para o tipo base (ex: char*).
-        c_type_do_valor = mapa_tipos_linguagem_para_c.at(op.tipo_base) + "*";
-    } else {
-        // Para todos os outros casos (endereço de int, float, char),
-        // o tipo do valor é o mesmo tipo da expressão.
-        c_type_do_valor = op.tipo;
-    }
+	// O resultado da desreferência é uma nova variável temporária.
+	res.label = gentempcode();
+	
+	// O código gerado é a desreferência do ponteiro antigo, que aponta para o membro.
+	res.traducao = op.traducao + "\t" + res.label + " = *" + op.label + ";\n";
+	
+	// Após a desreferência, o resultado é um valor, não mais um endereço.
+	res.eh_endereco = false;
 
-    res.tipo = c_type_do_valor;
-    res.label = gentempcode();
-    
-    // Registra o temporário para declaração com o tipo C correto!
-    declaracoes_temp.top()[res.label] = res.tipo;
-    
-    // Gera o código da desreferência
-    res.traducao = op.traducao + "\t" + res.label + " = *" + op.label + ";\n";
-    
-    // O resultado agora é um valor, não mais um endereço.
-    res.eh_endereco = false; 
-    res.eh_vetor = (res.tipo.back() == '*'); // É um vetor se seu novo tipo C ainda for um ponteiro.
+	// Determina o tipo C correto para a nova variável temporária que guardará o VALOR.
+	string c_type_do_valor;
+	if (op.tipo == "matriz") {
+		// Desreferenciar um ponteiro para um membro do tipo matriz (int***) resulta em uma matriz (int**).
+		c_type_do_valor = mapa_tipos_linguagem_para_c.at(op.tipo_base) + "**";
+	} else if (op.tipo == "vetor") {
+		// Desreferenciar um ponteiro para um membro do tipo vetor (int**) resulta em um vetor (int*).
+		c_type_do_valor = mapa_tipos_linguagem_para_c.at(op.tipo_base) + "*";
+	} else if (classes_definidas.count(op.tipo)) {
+		// Desreferenciar um ponteiro para um membro do tipo struct (struct Ponto*) resulta em uma struct (struct Ponto).
+		c_type_do_valor = "struct " + op.tipo;
+	} else {
+		// Desreferenciar um ponteiro para um primitivo (int*) resulta em um primitivo (int).
+		c_type_do_valor = mapa_tipos_linguagem_para_c.at(op.tipo);
+	}
 
-    return res;
+	// Registra a nova variável temporária com seu tipo C correto.
+	declaracoes_temp.top()[res.label] = c_type_do_valor;
+	
+	return res;
 }
+
+string gerar_codigo_alocacao_membros(const string& base_path, const string& tipo_classe) {
+    string codigo;
+    if (!classes_definidas.count(tipo_classe)) return "";
+
+    auto& classe_info = classes_definidas.at(tipo_classe);
+    for (const auto& membro : classe_info.membros) {
+        string membro_path = base_path + "." + membro.nome;
+
+        if (membro.tipo == "vetor") {
+            string c_type_base = mapa_tipos_linguagem_para_c.at(membro.tipo_base);
+            codigo += "\t" + membro_path + " = (" + c_type_base + "*) malloc(" + to_string(membro.valor_linhas) + " * sizeof(" + c_type_base + "));\n";
+        } else if (membro.tipo == "matriz") {
+            string c_type_base = mapa_tipos_linguagem_para_c.at(membro.tipo_base);
+            string linhas_str = to_string(membro.valor_linhas);
+            string colunas_str = to_string(membro.valor_colunas);
+            codigo += "\t" + membro_path + " = (" + c_type_base + "**) malloc(" + linhas_str + " * sizeof(" + c_type_base + "*));\n";
+            string loop_var = gentempcode();
+            declaracoes_temp.top()[loop_var] = "int";
+            string loop_start = genlabel(), loop_end = genlabel(), loop_cond = gentempcode();
+            declaracoes_temp.top()[loop_cond] = "boolean";
+            codigo += "\t" + loop_var + " = 0;\n";
+            codigo += loop_start + ":\n";
+            codigo += "\t\t" + loop_cond + " = " + loop_var + " < " + linhas_str + ";\n";
+            codigo += "\t\tif (!" + loop_cond + ") goto " + loop_end + ";\n";
+            codigo += "\t\t" + membro_path + "[" + loop_var + "] = (" + c_type_base + "*) malloc(" + colunas_str + " * sizeof(" + c_type_base + "));\n";
+            codigo += "\t\t" + loop_var + " = " + loop_var + " + 1;\n";
+            codigo += "\t\tgoto " + loop_start + ";\n";
+            codigo += loop_end + ":\n";
+        } else if (classes_definidas.count(membro.tipo)) {
+            // Chamada recursiva para structs aninhadas
+            codigo += gerar_codigo_alocacao_membros(membro_path, membro.tipo);
+        }
+    }
+    return codigo;
+}
+
 atributos converter_implicitamente(atributos op, string tipo_destino) {
     if (op.tipo == tipo_destino) return op;
 
@@ -242,44 +305,50 @@ void sair_escopo() {
 }
 
 string gerar_codigo_declaracoes() {
-    string codigo_local;
-    // Pega as listas do topo da pilha (escopo atual)
-    vector<string>& ordem_declaracoes_atual = ordem_declaracoes.top();
-    map<string, string>& declaracoes_temp_atual = declaracoes_temp.top();
-    map<string, string>& mapa_c_para_original_atual = mapa_c_para_original.top();
+	string codigo_local;
+	if (ordem_declaracoes.empty()) return "";
 
-    for (const auto &c_name : ordem_declaracoes_atual) {
-        auto it_decl_type = declaracoes_temp_atual.find(c_name);
-        if (it_decl_type != declaracoes_temp_atual.end()) {
-            const string& tipo_linguagem = it_decl_type->second;
-            string tipo_c_str = "";
+	vector<string>& ordem_declaracoes_atual = ordem_declaracoes.top();
+	map<string, string>& declaracoes_temp_atual = declaracoes_temp.top();
+	map<string, string>& mapa_c_para_original_atual = mapa_c_para_original.top();
 
-            if (tipo_linguagem.find('*') != string::npos) {
-                tipo_c_str = tipo_linguagem;
-            } else if (tipo_linguagem == "string") {
-                tipo_c_str = "char*";
-                auto it_orig_name = mapa_c_para_original_atual.find(c_name);
-                if (it_orig_name != mapa_c_para_original_atual.end()) {
-                    codigo_local += "\t" + tipo_c_str + " " + c_name + " = NULL; // " + it_orig_name->second + "\n";
-                    continue;
-                }
-            } else {
-                auto it_mapa_tipos = mapa_tipos_linguagem_para_c.find(tipo_linguagem);
-                if (it_mapa_tipos != mapa_tipos_linguagem_para_c.end()) {
-                    tipo_c_str = it_mapa_tipos->second;
-                }
-            }
-            if (!tipo_c_str.empty()) {
-                codigo_local += "\t" + tipo_c_str + " " + c_name + ";";
-                auto it_orig_name = mapa_c_para_original_atual.find(c_name);
-                if (it_orig_name != mapa_c_para_original_atual.end()) {
-                    codigo_local += " // " + it_orig_name->second;
-                }
-                codigo_local += "\n";
-            }
-        }
-    }
-    return codigo_local;
+	for (const auto &c_name : ordem_declaracoes_atual) {
+		auto it_decl_type = declaracoes_temp_atual.find(c_name);
+		if (it_decl_type != declaracoes_temp_atual.end()) {
+			const string& tipo_linguagem = it_decl_type->second;
+			string tipo_c_str = "";
+
+			// LÓGICA CORRIGIDA:
+			// Se o tipo já for um tipo C válido (contém 'struct' ou '*'), usa direto.
+			if (tipo_linguagem.find("struct ") == 0 || tipo_linguagem.find('*') != string::npos) {
+				tipo_c_str = tipo_linguagem;
+			}
+			// Se não, busca no mapa de tipos primitivos.
+			else if (mapa_tipos_linguagem_para_c.count(tipo_linguagem)) {
+				tipo_c_str = mapa_tipos_linguagem_para_c.at(tipo_linguagem);
+			}
+
+			if (!tipo_c_str.empty()) {
+				// Adiciona o tipo e o nome da variável
+				codigo_local += "\t" + tipo_c_str + " " + c_name;
+				
+				// Inicializa ponteiros de string como NULL para segurança
+				if (tipo_c_str == "char*") {
+					codigo_local += " = NULL";
+				}
+				
+				codigo_local += ";";
+				
+				// Adiciona o nome original como comentário
+				auto it_orig_name = mapa_c_para_original_atual.find(c_name);
+				if (it_orig_name != mapa_c_para_original_atual.end()) {
+					codigo_local += " // " + it_orig_name->second;
+				}
+				codigo_local += "\n";
+			}
+		}
+	}
+	return codigo_local;
 }
 
 atributos gerar_codigo_concatenacao(atributos str1, atributos str2) {

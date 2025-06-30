@@ -43,6 +43,8 @@ ID          {LETRA}({LETRA}|{DIGITO})*
 "str"       { return TK_TIPO_STRING; }
 "vd"        { return TK_TIPO_VOID; }
 "rtn"       { return TK_RETURN; }
+"cls"       {return TK_CLASS;}
+"."         {return TK_PONTO;}
 
 "++"        { return TK_MAIS_MAIS; }
 "--"        { return TK_MENOS_MENOS; }
