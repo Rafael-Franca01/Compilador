@@ -1,23 +1,72 @@
-// --- Teste 16: Função chamando outra função ---
+// Definição de uma struct interna com uma matriz
+cls RelatorioVendas {
+	str gerente;
+	flt vendas[2][4]; // Matriz de floats
+};
+int b;
+// Definição da struct principal que contém a struct interna
+// e também uma matriz de strings.
+cls Departamento {
+	int id_depto;
+	RelatorioVendas relatorio_anual;
+	str nomes_funcionarios[3][1]; // Matriz de strings
+};
 
-int dobrar(int x) {
-    rtn x * 2;
-}
-
-int calcularDobroMaisB(int a, int b) {
-    int dobro_de_a;
-    dobro_de_a = dobrar(a); // Chamada para a função auxiliar
-    rtn dobro_de_a + b;
-}
+// Protótipo de uma função que recebe a struct interna
+fnc flt calculaTotalVendas(RelatorioVendas rel);
 
 int main() {
-    int resultado_final;
-    prt("--- Teste de Chamada Aninhada ---\n");
-    prt("Calculando 2*7 + 3...\n");
+	Departamento ti;
+	flt total;
+	
+	// --- Inicializa a struct principal ---
+	ti.id_depto = 101;
+	
+	// --- Inicializa a struct aninhada ---
+	ti.relatorio_anual.gerente = "Sr. Silva";
+	
+	// Preenche a matriz de vendas na struct aninhada
+	for (int i = 0; i < 2; i++) {
+		for (int j = 0; j < 4; j++) {
+			ti.relatorio_anual.vendas[i][j] = (i * 1000.0) + (j * 100.0);
+		}
+	}
+	
+	// Preenche a matriz de strings
+	ti.nomes_funcionarios[0][0] = "Ana";
+	ti.nomes_funcionarios[1][0] = "Bruno";
+	ti.nomes_funcionarios[2][0] = "Carla";
 
-    resultado_final = calcularDobroMaisB(7, 3);
+	// --- Executa a lógica ---
+	prt("Calculando vendas para o gerente: ");
+	prt(ti.relatorio_anual.gerente);
+	prt("\n");
+	
+	// Passa a struct aninhada para a função
+	total = calculaTotalVendas(ti.relatorio_anual);
+	
+	prt("Total de vendas do departamento ");
+	prt(ti.id_depto);
+	prt(": ");
+	prt(total);
+	prt("\n");
+	
+	prt("Funcionarios: ");
+	prt(ti.nomes_funcionarios[0][0]);
+	prt(", ");
+	prt(ti.nomes_funcionarios[1][0]);
+	prt(", ");
+	prt(ti.nomes_funcionarios[2][0]);
+	prt("\n");
+}
 
-    prt("Resultado final:\n");
-    prt(resultado_final); // Esperado: 17 (dobrar(7)=14, 14+3=17)
-    prt("\n");
+// Definição completa da função
+fnc flt calculaTotalVendas(RelatorioVendas rel) {
+	flt soma = 0.0;
+	for (int i = 0; i < 2; i++) {
+		for (int j = 0; j < 4; j++) {
+			soma = soma + rel.vendas[i][j];
+		}
+	}
+	rtn soma;
 }

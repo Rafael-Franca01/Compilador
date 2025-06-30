@@ -29,6 +29,7 @@ ID          {LETRA}({LETRA}|{DIGITO})*
 "swc"       { return TK_SWITCH; }
 "cs"        { return TK_CASE; }
 "def"       { return TK_DEFAULT; }
+"fnc"       {return TK_FNC;}
 "whl"       { return TK_WHILE; }
 "do"        { return TK_DO; }
 "for"       { return TK_FOR; }

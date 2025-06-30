@@ -18,7 +18,7 @@ string codigo_funcoes_globais;
 %token TK_CLASS TK_PONTO
 %token TK_SWITCH TK_CASE TK_DEFAULT
 %token TK_TIPO_INT TK_TIPO_FLOAT TK_TIPO_CHAR TK_TIPO_BOOL TK_TIPO_STRING TK_ID TK_MAIS_MAIS TK_MENOS_MENOS
-%token TK_TIPO_VOID TK_RETURN
+%token TK_TIPO_VOID TK_RETURN TK_FNC
 %token TK_FIM TK_ERROR
 
 %start RAIZ
@@ -66,6 +66,7 @@ DEF_GLOBAL : DEFINICAO_FUNCAO { $$ = $1; }
 		   | DECLARACAO_FUNCAO { $$ = $1; }
 		   | DEFINICAO_MAIN  { $$ = $1; }
            | DEFINICAO_CLASSE { $$ = $1; } 
+           | DECLARACAO ';' {$$ = $1;}
 		   ;
 
 DEFINICAO_CLASSE : TK_CLASS TK_ID '{'
@@ -143,9 +144,9 @@ LISTA_MEMBROS : DECLARACAO ';' LISTA_MEMBROS
 				  | /* vazio */ { $$.args.clear(); }
 				  ;
 
-DECLARACAO_FUNCAO : TIPO_FUNCAO TK_ID '(' PARAMS ')' ';'
+DECLARACAO_FUNCAO : TK_FNC TIPO_FUNCAO TK_ID '(' PARAMS ')' ';'
 	{
-		string func_name = $2.label;
+		string func_name = $3.label;
 		atributos* symbol = buscar_simbolo(func_name);
         encontrou_retorno_na_funcao_atual = false;
 		// Erro se já existir uma definição completa com o mesmo nome
@@ -157,8 +158,8 @@ DECLARACAO_FUNCAO : TIPO_FUNCAO TK_ID '(' PARAMS ')' ';'
 			atributos func_attrs;
 			func_attrs.nome_original = func_name;
 			func_attrs.label = func_name;
-			func_attrs.tipo = $1.tipo;
-			func_attrs.params = $4.params;
+			func_attrs.tipo = $2.tipo;
+			func_attrs.params = $5.params;
 			func_attrs.kind = "function_prototype"; // Marca como protótipo
 			pilha_tabelas_simbolos[0][func_name] = func_attrs; // Adiciona ao escopo global
 		}
@@ -191,9 +192,9 @@ DEFINICAO_MAIN : TK_TIPO_INT TK_MAIN '(' ')' MAIN_BLOCO
 	}
 	;
 
-DEFINICAO_FUNCAO : TIPO_FUNCAO TK_ID '(' PARAMS ')'
+DEFINICAO_FUNCAO : TK_FNC TIPO_FUNCAO TK_ID '(' PARAMS ')'
 	{
-		string func_name = $2.label;
+		string func_name = $3.label;
 		atributos* symbol = buscar_simbolo(func_name);
 
 		// Erro se a função já estiver completamente definida
@@ -203,24 +204,24 @@ DEFINICAO_FUNCAO : TIPO_FUNCAO TK_ID '(' PARAMS ')'
 
 		// Se um protótipo já existe, verifica se a definição é compatível
 		if (symbol && symbol->kind == "function_prototype") {
-			if (symbol->tipo != $1.tipo) {
+			if (symbol->tipo != $2.tipo) {
 				yyerror("Erro: Conflito no tipo de retorno para a funcao '" + func_name + "'.");
 			}
-			if (symbol->params.size() != $4.params.size()) {
+			if (symbol->params.size() != $5.params.size()) {
 				yyerror("Erro: Conflito no numero de parametros para a funcao '" + func_name + "'.");
 			}
 			// (Opcional) Adicionar checagem de tipo para cada parâmetro
 			
 			// Atualiza o símbolo existente para uma definição completa
 			symbol->kind = "function";
-			symbol->params = $4.params;
+			symbol->params = $5.params;
 			$$ = *symbol;
 		} else {
 			// Nenhum protótipo encontrado, trata como uma definição direta
 			$$.nome_original = func_name;
 			$$.label = func_name;
-			$$.tipo = $1.tipo;
-			$$.params = $4.params;
+			$$.tipo = $2.tipo;
+			$$.params = $5.params;
 			$$.kind = "function";
 			pilha_tabelas_simbolos[0][func_name] = $$; // Adiciona ao escopo global
 		}
@@ -257,18 +258,18 @@ DEFINICAO_FUNCAO : TIPO_FUNCAO TK_ID '(' PARAMS ')'
 	}
 	BLOCO
 	{
-        if ($6.tipo != "void" && !encontrou_retorno_na_funcao_atual) {
-			yyerror("Erro Semantico: A funcao '" + $6.nome_original + "' deve retornar um valor.");
+        if ($7.tipo != "void" && !encontrou_retorno_na_funcao_atual) {
+			yyerror("Erro Semantico: A funcao '" + $7.nome_original + "' deve retornar um valor.");
 		}
 		sair_escopo();
 		pilha_funcoes_atuais.pop();
         string tipo_retorno_c;
-		if (classes_definidas.count($6.tipo)) { 
-			tipo_retorno_c = "struct " + $6.tipo;
+		if (classes_definidas.count($7.tipo)) { 
+			tipo_retorno_c = "struct " + $7.tipo;
 		} else {
-            tipo_retorno_c = mapa_tipos_linguagem_para_c.at($6.tipo);
-            string assinatura = tipo_retorno_c + " " + $6.label + "(" + $6.traducao + ")";
-            string corpo_funcao_com_vars = $7.traducao;
+            tipo_retorno_c = mapa_tipos_linguagem_para_c.at($7.tipo);
+            string assinatura = tipo_retorno_c + " " + $7.label + "(" + $7.traducao + ")";
+            string corpo_funcao_com_vars = $8.traducao;
             codigo_funcoes_globais += "\n" + assinatura + " {\n" + corpo_funcao_com_vars + "}\n\n";
             $$.kind = "function_definition";
             $$.traducao = "";
