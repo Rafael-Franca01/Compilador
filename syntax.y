@@ -62,8 +62,35 @@ LISTA_DEFS_GLOBAIS : DEF_GLOBAL LISTA_DEFS_GLOBAIS
     ;
 
 DEF_GLOBAL : DEFINICAO_FUNCAO { $$ = $1; }
-           | DEFINICAO_MAIN  { $$ = $1; }
-           ;
+		   | DECLARACAO_FUNCAO { $$ = $1; }
+		   | DEFINICAO_MAIN  { $$ = $1; }
+		   ;
+
+DECLARACAO_FUNCAO : TIPO_FUNCAO TK_ID '(' PARAMS ')' ';'
+	{
+		string func_name = $2.label;
+		atributos* symbol = buscar_simbolo(func_name);
+        encontrou_retorno_na_funcao_atual = false;
+		// Erro se já existir uma definição completa com o mesmo nome
+		if (symbol && symbol->kind == "function") {
+			yyerror("Erro: Prototipo para a funcao '" + func_name + "' que ja foi definida.");
+		}
+		// Se ainda não existir, adiciona o protótipo à tabela de símbolos global
+		else if (!symbol) {
+			atributos func_attrs;
+			func_attrs.nome_original = func_name;
+			func_attrs.label = func_name;
+			func_attrs.tipo = $1.tipo;
+			func_attrs.params = $4.params;
+			func_attrs.kind = "function_prototype"; // Marca como protótipo
+			pilha_tabelas_simbolos[0][func_name] = func_attrs; // Adiciona ao escopo global
+		}
+		// Se já existir um protótipo, ignora (uma checagem mais robusta compararia as assinaturas)
+
+		$$.traducao = ""; // Protótipos não geram código executável
+		$$.kind = "function_declaration";
+	}
+	;
 
 DEFINICAO_MAIN : TK_TIPO_INT TK_MAIN '(' ')' MAIN_BLOCO
 	{
@@ -88,67 +115,82 @@ DEFINICAO_MAIN : TK_TIPO_INT TK_MAIN '(' ')' MAIN_BLOCO
 	;
 
 DEFINICAO_FUNCAO : TIPO_FUNCAO TK_ID '(' PARAMS ')'
-    {
-        // Parte 1: Preparar os atributos da função e declará-la no escopo global
-        $$.nome_original = $2.label;
-        $$.label = $2.label;
-        $$.tipo = $1.tipo;
-        $$.kind = "function";
-        $$.params = $4.params;
+	{
+		string func_name = $2.label;
+		atributos* symbol = buscar_simbolo(func_name);
 
-        if (!declarar_simbolo($$.nome_original, $$.tipo, $$.label)) { /*...*/ }
-        *buscar_simbolo($$.nome_original) = $$;
-        
-        // Parte 2: Criar o escopo da função
-        entrar_escopo();
-        pilha_funcoes_atuais.push($$);
+		// Erro se a função já estiver completamente definida
+		if (symbol && symbol->kind == "function") {
+			yyerror("Erro: Redefinicao da funcao '" + func_name + "'.");
+		}
 
-        string params_c_code;
-        for (size_t i = 0; i < $$.params.size(); ++i) {
-            ParamInfo* p = &($$.params[i]);
-            
-            // Gerar nome único para o parâmetro no código C
-            p->nome_no_c = genuniquename();
-            
-            // --- LÓGICA DE DECLARAÇÃO DO PARÂMETRO (Simplificada e Corrigida) ---
-            // 1. Criar um 'atributos' completo para o símbolo do parâmetro
-            atributos param_symbol;
-            param_symbol.tipo = p->tipo;
-            param_symbol.tipo_base = p->tipo_base; // Estará vazio para tipos simples
-            param_symbol.label = p->nome_no_c;
-            param_symbol.nome_original = p->nome_original;
-            param_symbol.kind = "variable";
-            
-            // 2. Adicionar o símbolo do parâmetro diretamente à tabela do escopo atual
-            pilha_tabelas_simbolos.back()[p->nome_original] = param_symbol;
-            // --- Fim da Lógica Corrigida ---
+		// Se um protótipo já existe, verifica se a definição é compatível
+		if (symbol && symbol->kind == "function_prototype") {
+			if (symbol->tipo != $1.tipo) {
+				yyerror("Erro: Conflito no tipo de retorno para a funcao '" + func_name + "'.");
+			}
+			if (symbol->params.size() != $4.params.size()) {
+				yyerror("Erro: Conflito no numero de parametros para a funcao '" + func_name + "'.");
+			}
+			// (Opcional) Adicionar checagem de tipo para cada parâmetro
+			
+			// Atualiza o símbolo existente para uma definição completa
+			symbol->kind = "function";
+			symbol->params = $4.params;
+			$$ = *symbol;
+		} else {
+			// Nenhum protótipo encontrado, trata como uma definição direta
+			$$.nome_original = func_name;
+			$$.label = func_name;
+			$$.tipo = $1.tipo;
+			$$.params = $4.params;
+			$$.kind = "function";
+			pilha_tabelas_simbolos[0][func_name] = $$; // Adiciona ao escopo global
+		}
 
-            // Montar a string da assinatura da função em C
-            string c_type;
-            if (p->tipo == "vetor") {
-                c_type = mapa_tipos_linguagem_para_c.at(p->tipo_base) + "*";
-            } else if (p->tipo == "matriz") {
-                c_type = mapa_tipos_linguagem_para_c.at(p->tipo_base) + "**";
-            } else {
-                c_type = mapa_tipos_linguagem_para_c.at(p->tipo);
-            }
-            params_c_code += c_type + " " + p->nome_no_c;
-            if (i < $$.params.size() - 1) { params_c_code += ", "; }
-        }
-        $$.traducao = params_c_code;
-    }
-    BLOCO
-    {
-        sair_escopo();
-        pilha_funcoes_atuais.pop();
-        string tipo_retorno_c = mapa_tipos_linguagem_para_c.at($6.tipo);
-        string assinatura = tipo_retorno_c + " " + $6.label + "(" + $6.traducao + ")";
-        string corpo_funcao_com_vars = $7.traducao;
-        codigo_funcoes_globais += "\n" + assinatura + " {\n" + corpo_funcao_com_vars + "}\n\n";
-        $$.kind = "function_definition";
-        $$.traducao = "";
-    }
-    ;
+		// O resto da regra para criar o escopo e processar os parâmetros continua igual
+		entrar_escopo();
+		pilha_funcoes_atuais.push($$);
+
+		string params_c_code;
+		for (size_t i = 0; i < $$.params.size(); ++i) {
+			ParamInfo* p = &($$.params[i]);
+			p->nome_no_c = genuniquename();
+			atributos param_symbol;
+			param_symbol.tipo = p->tipo;
+			param_symbol.tipo_base = p->tipo_base;
+			param_symbol.label = p->nome_no_c;
+			param_symbol.nome_original = p->nome_original;
+			param_symbol.kind = "variable";
+			pilha_tabelas_simbolos.back()[p->nome_original] = param_symbol;
+			string c_type;
+			if (p->tipo == "vetor") {
+				c_type = mapa_tipos_linguagem_para_c.at(p->tipo_base) + "*";
+			} else if (p->tipo == "matriz") {
+				c_type = mapa_tipos_linguagem_para_c.at(p->tipo_base) + "**";
+			} else {
+				c_type = mapa_tipos_linguagem_para_c.at(p->tipo);
+			}
+			params_c_code += c_type + " " + p->nome_no_c;
+			if (i < $$.params.size() - 1) { params_c_code += ", "; }
+		}
+		$$.traducao = params_c_code;
+	}
+	BLOCO
+	{
+        if ($6.tipo != "void" && !encontrou_retorno_na_funcao_atual) {
+			yyerror("Erro Semantico: A funcao '" + $6.nome_original + "' deve retornar um valor.");
+		}
+		sair_escopo();
+		pilha_funcoes_atuais.pop();
+		string tipo_retorno_c = mapa_tipos_linguagem_para_c.at($6.tipo);
+		string assinatura = tipo_retorno_c + " " + $6.label + "(" + $6.traducao + ")";
+		string corpo_funcao_com_vars = $7.traducao;
+		codigo_funcoes_globais += "\n" + assinatura + " {\n" + corpo_funcao_com_vars + "}\n\n";
+		$$.kind = "function_definition";
+		$$.traducao = "";
+	}
+	;
 
 TIPO_FUNCAO : TIPO          { $$ = $1; }
             | TK_TIPO_VOID  { $$.tipo = "void"; }
@@ -366,19 +408,20 @@ COMANDO : COD  FIM_DE_COMANDO  { $$.traducao = $1.traducao + $2.traducao; }
     | TK_RETURN ';'
     {
         if (pilha_funcoes_atuais.empty()) {
-            yyerror("Comando 'rtn' fora de uma função.");
+            yyerror("Comando 'rtn' fora de uma função ou presente na main.");
         } else {
             atributos func_atual = pilha_funcoes_atuais.top();
             if (func_atual.tipo != "void") {
                 yyerror("Comando 'rtn' sem valor em uma função que retorna '" + func_atual.tipo + "'.");
             }
         }
+        encontrou_retorno_na_funcao_atual = true;
         $$.traducao = "\treturn;\n";
     }
     | TK_RETURN E ';'
     {
         if (pilha_funcoes_atuais.empty()) {
-            yyerror("Comando 'rtn' fora de uma função.");
+            yyerror("Comando 'rtn' fora de uma função ou presente na main.");
         } else {
             atributos func_atual = pilha_funcoes_atuais.top();
             atributos valor_retorno = desreferenciar_se_necessario($2);
@@ -395,6 +438,7 @@ COMANDO : COD  FIM_DE_COMANDO  { $$.traducao = $1.traducao + $2.traducao; }
             }
             $$.traducao = valor_retorno.traducao + "\treturn " + valor_retorno.label + ";\n";
         }
+        encontrou_retorno_na_funcao_atual = true;
     }
     | TK_IF '(' E ')' BLOCO
     {
@@ -1012,55 +1056,56 @@ POSTFIX_E : POSTFIX_E TK_MAIS_MAIS
                 }
             }
           | TK_ID '(' ARGS ')'
-            {
-                string nome_funcao = $1.label;
-                atributos* simb = buscar_simbolo(nome_funcao);
+			{
+				string nome_funcao = $1.label;
+				atributos* simb = buscar_simbolo(nome_funcao);
 
-                if (!simb || simb->kind != "function") {
-                    yyerror("'" + nome_funcao + "' não é uma função ou não foi declarada.");
-                    $$.tipo = "error";
-                } else {
-                    vector<atributos> args = $3.args;
-                    if (args.size() != simb->params.size()) {
-                        yyerror("Número incorreto de argumentos para a função '" + nome_funcao + "'. Esperado: " + to_string(simb->params.size()) + ", Recebido: " + to_string(args.size()));
-                        $$.tipo = "error";
-                    } else {
-                        string codigo_args;
-                        string c_args_list;
+				// Agora aceita tanto uma definição completa ('function') quanto um protótipo ('function_prototype')
+				if (!simb || (simb->kind != "function" && simb->kind != "function_prototype")) {
+					yyerror("'" + nome_funcao + "' nao e uma funcao ou nao foi declarada.");
+					$$.tipo = "error";
+				} else {
+					vector<atributos> args = $3.args;
+					if (args.size() != simb->params.size()) {
+						yyerror("Numero incorreto de argumentos para a funcao '" + nome_funcao + "'. Esperado: " + to_string(simb->params.size()) + ", Recebido: " + to_string(args.size()));
+						$$.tipo = "error";
+					} else {
+						string codigo_args;
+						string c_args_list;
 
-                        for (size_t i = 0; i < args.size(); ++i) {
-                            atributos arg = desreferenciar_se_necessario(args[i]);
-                            string param_tipo = simb->params[i].tipo;
-                            if(arg.tipo != param_tipo && !(param_tipo == "float" && arg.tipo == "int")) {
-                                yyerror("Tipo do argumento " + to_string(i+1) + " incompatível na chamada de '" + nome_funcao + "'.");
-                            }
-                            if (param_tipo == "float" && arg.tipo == "int") {
-                                arg = converter_implicitamente(arg, "float");
-                            }
-                            codigo_args += arg.traducao;
-                            c_args_list += arg.label;
-                            if (i < args.size() - 1) {
-                                c_args_list += ", ";
-                            }
-                        }
+						for (size_t i = 0; i < args.size(); ++i) {
+							atributos arg = desreferenciar_se_necessario(args[i]);
+							string param_tipo = simb->params[i].tipo;
+							if(arg.tipo != param_tipo && !(param_tipo == "float" && arg.tipo == "int")) {
+								yyerror("Tipo do argumento " + to_string(i+1) + " incompativel na chamada de '" + nome_funcao + "'.");
+							}
+							if (param_tipo == "float" && arg.tipo == "int") {
+								arg = converter_implicitamente(arg, "float");
+							}
+							codigo_args += arg.traducao;
+							c_args_list += arg.label;
+							if (i < args.size() - 1) {
+								c_args_list += ", ";
+							}
+						}
 
-                        $$.traducao = codigo_args;
-                        $$.tipo = simb->tipo; // O tipo da expressão é o tipo de retorno da função
+						$$.traducao = codigo_args;
+						$$.tipo = simb->tipo;
 
-                        if ($$.tipo != "void") {
-                            $$.label = gentempcode();
-                            declaracoes_temp.top()[$$.label] = $$.tipo;
-                            $$.traducao += "\t" + $$.label + " = " + nome_funcao + "(" + c_args_list + ");\n";
-                            if ($$.tipo == "string") {
-                                strings_a_liberar.push_back($$.label);
-                            }
-                        } else {
-                            $$.label = ""; // Chamada de função void não tem valor
-                            $$.traducao += "\t" + nome_funcao + "(" + c_args_list + ");\n";
-                        }
-                    }
-                }
-            }
+						if ($$.tipo != "void") {
+							$$.label = gentempcode();
+							declaracoes_temp.top()[$$.label] = $$.tipo;
+							$$.traducao += "\t" + $$.label + " = " + nome_funcao + "(" + c_args_list + ");\n";
+							if ($$.tipo == "string") {
+								strings_a_liberar.push_back($$.label);
+							}
+						} else {
+							$$.label = "";
+							$$.traducao += "\t" + nome_funcao + "(" + c_args_list + ");\n";
+						}
+					}
+				}
+			}
           | TK_ID
             {
                 atributos* simb_ptr = buscar_simbolo($1.label);

@@ -16,6 +16,7 @@ bool funcao_sub_matriz_int_gerada = false;
 bool funcao_mult_matriz_float_gerada = false;
 bool funcao_add_matriz_float_gerada = false;
 bool funcao_sub_matriz_float_gerada = false;
+bool encontrou_retorno_na_funcao_atual = false;
 
 vector<string> strings_a_liberar_no_comando;
 string codigo_funcoes_auxiliares;
