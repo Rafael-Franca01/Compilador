@@ -69,7 +69,7 @@ DECLARACAO_FUNCAO : TIPO_FUNCAO TK_ID '(' PARAMS ')' ';'
 	{
 		string func_name = $2.label;
 		atributos* symbol = buscar_simbolo(func_name);
-
+        encontrou_retorno_na_funcao_atual = false;
 		// Erro se já existir uma definição completa com o mesmo nome
 		if (symbol && symbol->kind == "function") {
 			yyerror("Erro: Prototipo para a funcao '" + func_name + "' que ja foi definida.");
@@ -177,6 +177,9 @@ DEFINICAO_FUNCAO : TIPO_FUNCAO TK_ID '(' PARAMS ')'
 	}
 	BLOCO
 	{
+        if ($6.tipo != "void" && !encontrou_retorno_na_funcao_atual) {
+			yyerror("Erro Semantico: A funcao '" + $6.nome_original + "' deve retornar um valor.");
+		}
 		sair_escopo();
 		pilha_funcoes_atuais.pop();
 		string tipo_retorno_c = mapa_tipos_linguagem_para_c.at($6.tipo);
@@ -404,19 +407,20 @@ COMANDO : COD  FIM_DE_COMANDO  { $$.traducao = $1.traducao + $2.traducao; }
     | TK_RETURN ';'
     {
         if (pilha_funcoes_atuais.empty()) {
-            yyerror("Comando 'rtn' fora de uma função.");
+            yyerror("Comando 'rtn' fora de uma função ou presente na main.");
         } else {
             atributos func_atual = pilha_funcoes_atuais.top();
             if (func_atual.tipo != "void") {
                 yyerror("Comando 'rtn' sem valor em uma função que retorna '" + func_atual.tipo + "'.");
             }
         }
+        encontrou_retorno_na_funcao_atual = true;
         $$.traducao = "\treturn;\n";
     }
     | TK_RETURN E ';'
     {
         if (pilha_funcoes_atuais.empty()) {
-            yyerror("Comando 'rtn' fora de uma função.");
+            yyerror("Comando 'rtn' fora de uma função ou presente na main.");
         } else {
             atributos func_atual = pilha_funcoes_atuais.top();
             atributos valor_retorno = desreferenciar_se_necessario($2);
@@ -433,6 +437,7 @@ COMANDO : COD  FIM_DE_COMANDO  { $$.traducao = $1.traducao + $2.traducao; }
             }
             $$.traducao = valor_retorno.traducao + "\treturn " + valor_retorno.label + ";\n";
         }
+        encontrou_retorno_na_funcao_atual = true;
     }
     | TK_IF '(' E ')' BLOCO
     {
