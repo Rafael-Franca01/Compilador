@@ -31,6 +31,7 @@ string codigo_funcoes_globais;
 %left '*' '/'
 %right '~'
 %right TK_MAIS_MAIS TK_MENOS_MENOS
+%right UMINUS
 %%
 
 RAIZ : SEXO
@@ -921,6 +922,33 @@ E : POSTFIX_E '=' E
 UNARY_E : TK_MAIS_MAIS UNARY_E  { $$ = criar_expressao_unaria($2, "+"); }
         | TK_MENOS_MENOS UNARY_E { $$ = criar_expressao_unaria($2, "-"); }
         | '~' UNARY_E            { $$ = criar_expressao_unaria($2, "~"); }
+        | '-' E %prec UMINUS
+          {
+              // Pega o valor do operando, desreferenciando se for um endereço
+              atributos operando = desreferenciar_se_necessario($2);
+
+              // Verifica se o tipo é numérico
+              if (operando.tipo != "int" && operando.tipo != "float") {
+                  yyerror("Erro Semantico: O operador de negacao '-' so pode ser aplicado a tipos numericos (int, float).");
+                  $$ = atributos(); // Retorna atributo vazio em caso de erro
+              } else {
+                  // Prepara o atributo de resultado, herdando o tipo do operando
+                  $$ = operando; 
+                  $$.label = gentempcode();
+                  declaracoes_temp.top()[$$.label] = $$.tipo;
+
+                  // Gera o código: t_novo = -1 * t_antigo;
+                  // Multiplicar por -1 é uma forma robusta de negar.
+                  $$.traducao = operando.traducao;
+                  $$.traducao += "\t" + $$.label + " = -1 * " + operando.label + ";\n";
+
+                  // Se o operando era um literal, o resultado também é um literal, só que negado.
+                  if (operando.eh_literal) {
+                      $$.valor_literal = -operando.valor_literal;
+                  }
+              }
+          }
+
         | POSTFIX_E
         {
             $$ = $1;

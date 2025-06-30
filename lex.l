@@ -21,6 +21,7 @@ ID          {LETRA}({LETRA}|{DIGITO})*
 %%
 
 (\r\n|\n|\r)          { contador_linha++; }
+"//".* { /* Não faz nada, efetivamente ignorando o comentário */ }
 
 {DELIM}     {}
 "main"      { return TK_MAIN; }
