@@ -1,13 +1,17 @@
-int main() {
-    int i = 10;
-    flt f = 3.14;
-    boo b = true;
-    chr c = 'X';
-    str s = "Ola, Mundo!";
+int mult(int x, int y);
 
-    prt("Inteiro: "); prt(i); prt("\n");
-    prt("Float: "); prt(f); prt("\n");
-    prt("Booleano: "); prt(b); prt("\n");
-    prt("Char: "); prt(c); prt("\n");
-    prt("String: "); prt(s); prt("\n");
+int main() {
+  int resultado;
+  
+  
+  resultado = mult(5, 6);
+  
+  prt("O resultado de 5 * 6 e: ");
+  prt(resultado);
+  prt("\n");
+}
+
+
+int mult(int x, int y) {
+  rtn x * y;
 }
