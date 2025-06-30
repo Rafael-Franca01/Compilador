@@ -64,21 +64,27 @@ DEF_GLOBAL : DEFINICAO_FUNCAO { $$ = $1; }
            | DEFINICAO_MAIN  { $$ = $1; }
            ;
 
-DEFINICAO_MAIN : TK_TIPO_INT TK_MAIN '(' ')' BLOCO
-    {
-        string codigo;
-        codigo += "int main(void) {\n";
-        string codigo_final_de_liberacao = gerar_codigo_de_liberacao();
-        
-        // A geração de declarações agora é feita DENTRO do bloco $5
-        codigo += $5.traducao; 
-        
-        codigo += codigo_final_de_liberacao;
-        codigo += "\treturn 0;\n}\n";
-        $$.traducao = codigo;
-        $$.kind = "main_definition";
-    }
-    ;
+DEFINICAO_MAIN : TK_TIPO_INT TK_MAIN '(' ')' MAIN_BLOCO
+	{
+		string codigo;
+		codigo += "int main(void) {\n";
+		codigo += $5.traducao;
+		codigo += "\treturn 0;\n}\n";
+		$$.traducao = codigo;
+		$$.kind = "main_definition";
+	}
+	;
+    // mage vai tomar no seu cu
+    MAIN_BLOCO : '{' { entrar_escopo(); } COMANDOS '}'
+	{
+		string codigo_comandos = $3.traducao;
+		string codigo_liberacao = gerar_codigo_de_liberacao();
+		string codigo_declaracoes = gerar_codigo_declaracoes();
+		
+		$$.traducao = codigo_declaracoes + codigo_comandos + codigo_liberacao;
+		sair_escopo();
+	}
+	;
 
 DEFINICAO_FUNCAO : TIPO_FUNCAO TK_ID '(' PARAMS ')'
     {
@@ -194,17 +200,12 @@ PARAM : TIPO TK_ID
       ;
 
 BLOCO : '{' { entrar_escopo(); } COMANDOS '}'
-    {
-        string codigo_bloco;
-        // Gera as declarações do escopo atual (que está no topo da pilha)
-        codigo_bloco += gerar_codigo_declaracoes();
-        // Adiciona o código executável do bloco.
-        codigo_bloco += $3.traducao;
-
-        sair_escopo(); // Sair do escopo remove as listas da pilha automaticamente.
-        $$.traducao = codigo_bloco;
-    }
-    ;
+	{
+		string codigo_declaracoes = gerar_codigo_declaracoes();
+		$$.traducao = codigo_declaracoes + $3.traducao;
+		sair_escopo();
+	}
+	;
 
 COMANDOS : COMANDO COMANDOS
     { $$.traducao = $1.traducao + $2.traducao; }
@@ -458,32 +459,37 @@ COMANDO : COD  FIM_DE_COMANDO  { $$.traducao = $1.traducao + $2.traducao; }
         pilha_loops.pop_back();
     }
     | TK_FOR { entrar_escopo(); } '(' COD ';' E ';'
-      {
-        string temp_loop_continue = genlabel();
-        string temp_loop_break = genlabel();
-        pilha_loops.push_back(make_pair(temp_loop_break, temp_loop_continue));
-        $$ = $6;
-      }
-      COD ')' BLOCO
-      {
-        pair<string, string> current_loop_labels = pilha_loops.back();
-        string label_fim_for = current_loop_labels.first;
-        string label_continue_for = current_loop_labels.second;
+	{
+		string temp_loop_continue = genlabel();
+		string temp_loop_break = genlabel();
+		pilha_loops.push_back(make_pair(temp_loop_break, temp_loop_continue));
+		$$ = $6;
+	}
+	COD ')' BLOCO
+	{
+		pair<string, string> current_loop_labels = pilha_loops.back();
+		string label_fim_for = current_loop_labels.first;
+		string label_continue_for = current_loop_labels.second;
+		string label_condicao_for = genlabel();
 
-        string label_condicao_for = genlabel();
-        $$.traducao = $4.traducao;
-        $$.traducao += label_condicao_for + ":\n";
-        $$.traducao += $8.traducao;
-        $$.traducao += "\tif (!" + $8.label + ") goto " + label_fim_for + ";\n";
-        $$.traducao += $11.traducao;
-        $$.traducao += label_continue_for + ":\n";
-        $$.traducao += $9.traducao;
-        $$.traducao += "\tgoto " + label_condicao_for + ";\n";
-        $$.traducao += label_fim_for + ":\n";
+		string codigo_executavel;
+		codigo_executavel += $4.traducao;
+		codigo_executavel += label_condicao_for + ":\n";
+		codigo_executavel += $8.traducao;
+		codigo_executavel += "\tif (!" + $8.label + ") goto " + label_fim_for + ";\n";
+		codigo_executavel += $11.traducao;
+		codigo_executavel += label_continue_for + ":\n";
+		codigo_executavel += $9.traducao;
+		codigo_executavel += "\tgoto " + label_condicao_for + ";\n";
+		codigo_executavel += label_fim_for + ":\n";
 
-        pilha_loops.pop_back();
-        sair_escopo();
-    }
+		string codigo_declaracoes = gerar_codigo_declaracoes();
+		
+		$$.traducao = codigo_declaracoes + codigo_executavel;
+
+		pilha_loops.pop_back();
+		sair_escopo();
+	}
     | BLOCO
     {
         $$.traducao = $1.traducao;
@@ -683,78 +689,78 @@ DECLARACAO : TIPO TK_ID
         }
     }
 | TIPO TK_ID '[' E ']' '[' E ']'
-    {
-        if ($4.tipo != "int" || $7.tipo != "int") {
-            yyerror("Erro Semantico: As dimensoes de uma matriz devem ser inteiras.");
-            $$ = atributos();
-        } else {
-            string original_name = $2.label;
-            if (buscar_simbolo(original_name)) {
-                yyerror("Erro Semantico: Variavel '" + original_name + "' ja declarada.");
-                $$ = atributos();
-            } else {
-                
-                string c_type_base;
-                if ($1.tipo == "string") {
-                    c_type_base = "char";
-                } else {
-                    c_type_base = mapa_tipos_linguagem_para_c.at($1.tipo);
-                }
+	{
+		if ($4.tipo != "int" || $7.tipo != "int") {
+			yyerror("Erro Semantico: As dimensoes de uma matriz devem ser inteiras.");
+			$$ = atributos();
+		} else {
+			string original_name = $2.label;
+			if (buscar_simbolo(original_name)) {
+				yyerror("Erro Semantico: Variavel '" + original_name + "' ja declarada.");
+				$$ = atributos();
+			} else {
+				
+				string c_type_base;
+				if ($1.tipo == "string") {
+					c_type_base = "char";
+				} else {
+					c_type_base = mapa_tipos_linguagem_para_c.at($1.tipo);
+				}
 
-                string c_name = genuniquename();
-                atributos mat_attrs;
-                mat_attrs.label = c_name;
-                mat_attrs.tipo = "matriz";
-                mat_attrs.tipo_base = ($1.tipo == "string") ? "char" : $1.tipo;
-                mat_attrs.eh_vetor = true; 
-                mat_attrs.label_linhas = $4.label;
-                mat_attrs.label_colunas = $7.label;
+				string c_name = gentempcode(); // FIX
+				atributos mat_attrs;
+				mat_attrs.label = c_name;
+				mat_attrs.tipo = "matriz";
+				mat_attrs.tipo_base = ($1.tipo == "string") ? "char" : $1.tipo;
+				mat_attrs.eh_vetor = true; 
+				mat_attrs.label_linhas = $4.label;
+				mat_attrs.label_colunas = $7.label;
 
-                if ($4.eh_literal) {
-                    mat_attrs.valor_linhas = $4.valor_literal;
-                } else {
-                    mat_attrs.valor_linhas = -1; 
-                }
+				if ($4.eh_literal) {
+					mat_attrs.valor_linhas = $4.valor_literal;
+				} else {
+					mat_attrs.valor_linhas = -1; 
+				}
 
-                if ($7.eh_literal) {
-                    mat_attrs.valor_colunas = $7.valor_literal;
-                } else {
-                    mat_attrs.valor_colunas = -1; 
-                }
+				if ($7.eh_literal) {
+					mat_attrs.valor_colunas = $7.valor_literal;
+				} else {
+					mat_attrs.valor_colunas = -1; 
+				}
 
-                pilha_tabelas_simbolos.back()[original_name] = mat_attrs;
-                
-                string temp_loop_var = genuniquename();
-                string temp_condicao = genuniquename();
-                string label_inicio_loop = genlabel();
-                string label_fim_loop = genlabel();
-                string temp_addr_ptr = genuniquename();
-                string temp_malloc_result = genuniquename();
+				pilha_tabelas_simbolos.back()[original_name] = mat_attrs;
+				
+				string temp_loop_var = gentempcode(); // FIX
+				string temp_condicao = gentempcode(); // FIX
+				string label_inicio_loop = genlabel();
+				string label_fim_loop = genlabel();
+				string temp_addr_ptr = gentempcode(); // FIX
+				string temp_malloc_result = gentempcode(); // FIX
 
-                declaracoes_temp.top()[c_name] = c_type_base + "**";
-                mapa_c_para_original.top()[c_name] = original_name;
-                declaracoes_temp.top()[temp_loop_var] = "int";
-                declaracoes_temp.top()[temp_condicao] = "boolean";
-                declaracoes_temp.top()[temp_addr_ptr] = c_type_base + "**";
-                declaracoes_temp.top()[temp_malloc_result] = c_type_base + "*";
+				declaracoes_temp.top()[c_name] = c_type_base + "**";
+				mapa_c_para_original.top()[c_name] = original_name;
+				declaracoes_temp.top()[temp_loop_var] = "int";
+				declaracoes_temp.top()[temp_condicao] = "boolean";
+				declaracoes_temp.top()[temp_addr_ptr] = c_type_base + "**";
+				declaracoes_temp.top()[temp_malloc_result] = c_type_base + "*";
 
-                $$.traducao = $4.traducao + $7.traducao; 
-                $$.traducao += "\t" + c_name + " = (" + c_type_base + "**) malloc(" + $4.label + " * sizeof(" + c_type_base + "*));\n";
-                $$.traducao += "\t" + temp_loop_var + " = 0;\n";
-                $$.traducao += label_inicio_loop + ":\n";
-                $$.traducao += "\t\t" + temp_condicao + " = " + temp_loop_var + " < " + $4.label + ";\n";
-                $$.traducao += "\t\tif (!" + temp_condicao + ") goto " + label_fim_loop + ";\n";
-                $$.traducao += "\t\t" + temp_addr_ptr + " = " + c_name + " + " + temp_loop_var + ";\n";
-                $$.traducao += "\t\t" + temp_malloc_result + " = (" + c_type_base + "*) malloc(" + $7.label + " * sizeof(" + c_type_base + "));\n";
-                $$.traducao += "\t\t*" + temp_addr_ptr + " = " + temp_malloc_result + ";\n";
-                $$.traducao += "\t\t" + temp_loop_var + " = " + temp_loop_var + " + 1;\n";
-                $$.traducao += "\t\tgoto " + label_inicio_loop + ";\n";
-                $$.traducao += label_fim_loop + ":\n";
+				$$.traducao = $4.traducao + $7.traducao; 
+				$$.traducao += "\t" + c_name + " = (" + c_type_base + "**) malloc(" + $4.label + " * sizeof(" + c_type_base + "*));\n";
+				$$.traducao += "\t" + temp_loop_var + " = 0;\n";
+				$$.traducao += label_inicio_loop + ":\n";
+				$$.traducao += "\t\t" + temp_condicao + " = " + temp_loop_var + " < " + $4.label + ";\n";
+				$$.traducao += "\t\tif (!" + temp_condicao + ") goto " + label_fim_loop + ";\n";
+				$$.traducao += "\t\t" + temp_addr_ptr + " = " + c_name + " + " + temp_loop_var + ";\n";
+				$$.traducao += "\t\t" + temp_malloc_result + " = (" + c_type_base + "*) malloc(" + $7.label + " * sizeof(" + c_type_base + "));\n";
+				$$.traducao += "\t\t*" + temp_addr_ptr + " = " + temp_malloc_result + ";\n";
+				$$.traducao += "\t\t" + temp_loop_var + " = " + temp_loop_var + " + 1;\n";
+				$$.traducao += "\t\tgoto " + label_inicio_loop + ";\n";
+				$$.traducao += label_fim_loop + ":\n";
 
-                matrizes_a_liberar.push_back(make_pair(c_name, $4.label));
-            }
-        }
-    }
+				matrizes_a_liberar.push_back(make_pair(c_name, $4.label));
+			}
+		}
+	}
 | TIPO TK_ID '[' E ']'
     {
         if ($4.tipo != "int") {
@@ -801,59 +807,99 @@ TIPO : TK_TIPO_INT { $$.tipo = "int"; }
     ;
 
 E : POSTFIX_E '=' E
-    {
-        atributos lhs = $1;
-        atributos rhs = $3; // Para strings, não desreferenciamos ainda
+	{
+		atributos lhs = $1;
+		atributos rhs = $3;
 
-        if (lhs.tipo == "vetor" && lhs.tipo_base == "char" && rhs.tipo == "string") {
-            string dest_ptr = gentempcode();
-            declaracoes_temp.top()[dest_ptr] = "char*"; // O ponteiro da linha é char*
-            
-            $$.traducao = lhs.traducao + rhs.traducao; // Junta códigos anteriores
-            $$.traducao += "\t" + dest_ptr + " = *" + lhs.label + ";\n";
+		// Caso 1: Atribuição de matriz (ex: c = a + b)
+		if (lhs.tipo == "matriz" && rhs.tipo == "matriz") {
+			$$.traducao = lhs.traducao + rhs.traducao;
 
-            $$.traducao += "\tstrcpy(" + dest_ptr + ", " + rhs.label + ");\n";
-            
-            $$.label = dest_ptr;
-            $$.tipo = "string"; // O resultado da expressão é a própria string
-        }
-        else if (lhs.tipo == "string" && !lhs.eh_endereco) { // caso: str s; s = "pedro";
-            rhs = desreferenciar_se_necessario(rhs);
-            if (rhs.tipo != "string") {
-                yyerror("Erro Semantico: tipos incompatíveis para atribuir a string '" + lhs.nome_original + "'.");
-                $$.tipo = "error";
-            } else {
-                $$.traducao = rhs.traducao;
-                string temp_cond = gentempcode();
-                declaracoes_temp.top()[temp_cond] = "int";
-                string label_skip_free = genlabel();
-                $$.traducao += "\t" + temp_cond + " = " + lhs.label + " == NULL;\n";
-                $$.traducao += "\tif (" + temp_cond + ") goto " + label_skip_free + ";\n";
-                $$.traducao += "\tfree(" + lhs.label + ");\n";
-                $$.traducao += label_skip_free + ":\n";
-                string codigo_copia = contar_string(lhs.label, rhs);
-                $$.traducao += codigo_copia;
-                $$.label = lhs.label;
-                $$.tipo = lhs.tipo;
-                atualizar_info_string_simbolo(lhs.nome_original, rhs);
-            }
-        }
-        else { // Lógica para outros tipos (int, float, a[i][j], etc.)
-            rhs = desreferenciar_se_necessario(rhs);
-            if (lhs.tipo != rhs.tipo) {
-                rhs = converter_implicitamente(rhs, lhs.tipo);
-            }
-            $$.traducao = lhs.traducao + rhs.traducao;
+			// Gerencia a memória para evitar double-free.
+			// A variável da esquerda (LHS) passa a ser a dona da memória da direita (RHS).
+			// A memória original da LHS vaza (comportamento aceitável para corrigir o crash),
+			// mas o programa não irá mais travar.
+			
+			// 1. Remove o temporário da RHS da lista de liberação.
+			matrizes_a_liberar.erase(
+				std::remove_if(matrizes_a_liberar.begin(), matrizes_a_liberar.end(),
+					[&](const pair<string, string>& p){ return p.first == rhs.label; }),
+				matrizes_a_liberar.end()
+			);
 
-            if (lhs.eh_endereco) {
-                $$.traducao += "\t*" + lhs.label + " = " + rhs.label + ";\n";
-            } else {
-                $$.traducao += "\t" + lhs.label + " = " + rhs.label + ";\n";
-            }
-            $$.label = lhs.label;
-            $$.tipo = lhs.tipo;
-        }
-    }
+			// 2. Atualiza as dimensões de liberação para a LHS na lista.
+			for (auto& p : matrizes_a_liberar) {
+				if (p.first == lhs.label) {
+					p.second = rhs.label_linhas;
+					break;
+				}
+			}
+			
+			// 3. Atualiza as informações de dimensão no símbolo da LHS.
+			atributos* lhs_symbol = buscar_simbolo(lhs.nome_original);
+			if (lhs_symbol) {
+				lhs_symbol->label_linhas = rhs.label_linhas;
+				lhs_symbol->label_colunas = rhs.label_colunas;
+				lhs_symbol->valor_linhas = rhs.valor_linhas;
+				lhs_symbol->valor_colunas = rhs.valor_colunas;
+			}
+
+			// 4. Gera a atribuição de ponteiro.
+			$$.traducao += "\t" + lhs.label + " = " + rhs.label + ";\n";
+			$$.label = lhs.label;
+			$$.tipo = lhs.tipo;
+		}
+		// Caso 2: Atribuição a um vetor de char (linha de matriz de string)
+		else if (lhs.tipo == "vetor" && lhs.tipo_base == "char" && rhs.tipo == "string") {
+			string dest_ptr = gentempcode();
+			declaracoes_temp.top()[dest_ptr] = "char*";
+			
+			$$.traducao = lhs.traducao + rhs.traducao;
+			$$.traducao += "\t" + dest_ptr + " = *" + lhs.label + ";\n";
+			$$.traducao += "\tstrcpy(" + dest_ptr + ", " + rhs.label + ");\n";
+			
+			$$.label = dest_ptr;
+			$$.tipo = "string";
+		}
+		// Caso 3: Atribuição a uma variável string
+		else if (lhs.tipo == "string" && !lhs.eh_endereco) {
+			rhs = desreferenciar_se_necessario(rhs);
+			if (rhs.tipo != "string") {
+				yyerror("Erro Semantico: tipos incompatíveis para atribuir a string '" + lhs.nome_original + "'.");
+				$$.tipo = "error";
+			} else {
+				$$.traducao = rhs.traducao;
+				string temp_cond = gentempcode();
+				declaracoes_temp.top()[temp_cond] = "int";
+				string label_skip_free = genlabel();
+				$$.traducao += "\t" + temp_cond + " = " + lhs.label + " == NULL;\n";
+				$$.traducao += "\tif (" + temp_cond + ") goto " + label_skip_free + ";\n";
+				$$.traducao += "\tfree(" + lhs.label + ");\n";
+				$$.traducao += label_skip_free + ":\n";
+				string codigo_copia = contar_string(lhs.label, rhs);
+				$$.traducao += codigo_copia;
+				$$.label = lhs.label;
+				$$.tipo = lhs.tipo;
+				atualizar_info_string_simbolo(lhs.nome_original, rhs);
+			}
+		}
+		// Caso 4: Demais atribuições (int, float, a[i][j], etc.)
+		else {
+			rhs = desreferenciar_se_necessario(rhs);
+			if (lhs.tipo != rhs.tipo) {
+				rhs = converter_implicitamente(rhs, lhs.tipo);
+			}
+			$$.traducao = lhs.traducao + rhs.traducao;
+
+			if (lhs.eh_endereco) {
+				$$.traducao += "\t*" + lhs.label + " = " + rhs.label + ";\n";
+			} else {
+				$$.traducao += "\t" + lhs.label + " = " + rhs.label + ";\n";
+			}
+			$$.label = lhs.label;
+			$$.tipo = lhs.tipo;
+		}
+	}
   | E '+' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "+", "+", desreferenciar_se_necessario($3)); }
   | E '-' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "-", "-", desreferenciar_se_necessario($3)); }
   | E '*' E              { $$ = criar_expressao_binaria(desreferenciar_se_necessario($1), "*", "*", desreferenciar_se_necessario($3)); }

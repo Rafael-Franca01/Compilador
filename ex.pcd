@@ -1,14 +1,13 @@
-int teste(int a, int b){
-	int v;
-	v = a + b;
-	prt(v);
-}
+int main() {
+    int i = 10;
+    flt f = 3.14;
+    boo b = true;
+    chr c = 'X';
+    str s = "Ola, Mundo!";
 
-int main(){
-	int a;
-	int b;
-	int c;
-	a = 1;
-	b = 1;
-	teste(a, b);
+    prt("Inteiro: "); prt(i); prt("\n");
+    prt("Float: "); prt(f); prt("\n");
+    prt("Booleano: "); prt(b); prt("\n");
+    prt("Char: "); prt(c); prt("\n");
+    prt("String: "); prt(s); prt("\n");
 }
