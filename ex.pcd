@@ -1,16 +1,14 @@
-int mult(int x, int y) {
-  rtn x * y;
-}
+
 
 int main() {
-  int resultado;
-	
-  
-  resultado = mult(5, 6);
-  
-  prt("O resultado de 5 * 6 e: ");
-  prt(resultado);
-  prt("\n");
+  flt a = -750.45;
+  flt b = -a;
 
+  prt(b);
+
+  int c = -750;
+  int d = -c;
+
+  prt(d);
 }
 
